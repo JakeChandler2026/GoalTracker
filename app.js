@@ -61,6 +61,7 @@ const storageAdapter = window.BishopGoalTrackerStorage || {
 };
 const isSupabaseRuntime = backendRuntime.runtimeMode === "supabase";
 const BOOTSTRAP_TIMEOUT_MS = 8000;
+const LEVEL_POINT_REQUIREMENTS = [100, 100, 100];
 
 const firstRunState = {
   users: [
@@ -76,6 +77,7 @@ const firstRunState = {
       userId: "u1",
       title: "Complete Service Project Plan",
       summary: "Organize and finish a monthly quorum service project with full participation.",
+      points: 40,
       deadline: "2026-12-31",
       leaderApproved: false,
       leaderApprovedBy: null,
@@ -91,6 +93,7 @@ const firstRunState = {
       userId: "u1",
       title: "Prepare Teaching Assignment",
       summary: "Study, prepare, and deliver the next quorum lesson.",
+      points: 60,
       deadline: "2026-12-31",
       leaderApproved: false,
       leaderApprovedBy: null,
@@ -106,6 +109,7 @@ const firstRunState = {
       userId: "u2",
       title: "Temple Family History Goal",
       summary: "Research family names and prepare one family line for temple submission.",
+      points: 100,
       deadline: "2026-12-31",
       leaderApproved: true,
       leaderApprovedBy: "Bishop Reynolds",
@@ -122,6 +126,7 @@ const firstRunState = {
       id: "t1",
       title: "Daily Scripture Habit",
       summary: "Build a steady scripture study routine over three months.",
+      points: 100,
       subGoals: [
         { id: "tsg1", title: "Read 20 minutes a day", repeatCount: 90 },
         { id: "tsg2", title: "Write one takeaway each week", repeatCount: 12 }
@@ -149,6 +154,7 @@ const elements = {
   sessionBadge: document.getElementById("sessionBadge"),
   sessionTitle: document.getElementById("sessionTitle"),
   sessionDescription: document.getElementById("sessionDescription"),
+  sessionProgressTracker: document.getElementById("sessionProgressTracker"),
   logoutButton: document.getElementById("logoutButton"),
   demoAccountsBox: document.getElementById("demoAccountsBox"),
   dashboardTitle: document.getElementById("dashboardTitle"),
@@ -247,6 +253,7 @@ function normalizeState(rawState) {
 
   nextState.goals = nextState.goals.map((goal) => ({
     ...goal,
+    points: normalizePointValue(goal.points),
     deadline: normalizeGoalDeadline(goal),
     subGoals: goal.subGoals.map((subGoal) => ({
       id: subGoal.id,
@@ -265,6 +272,7 @@ function normalizeState(rawState) {
 
   nextState.templates = (nextState.templates || []).map((template) => ({
     ...template,
+    points: normalizePointValue(template.points),
     subGoals: (template.subGoals || []).map((subGoal) => ({
       id: subGoal.id,
       title: subGoal.title,
@@ -332,6 +340,15 @@ function createId(prefix) {
 
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizePointValue(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+
+  return Math.floor(parsed);
 }
 
 function addDays(dateString, days) {
@@ -451,6 +468,9 @@ function syncGoalFormFromTemplate(form, templateId) {
   if (!templateId) {
     form.elements.goalTitle.value = "";
     form.elements.goalSummary.value = "";
+    if (form.elements.goalPoints) {
+      form.elements.goalPoints.value = "0";
+    }
     writeDraftChecklistItems(form, []);
     renderDraftChecklistItems(form);
     return;
@@ -463,6 +483,9 @@ function syncGoalFormFromTemplate(form, templateId) {
 
   form.elements.goalTitle.value = template.title;
   form.elements.goalSummary.value = template.summary;
+  if (form.elements.goalPoints) {
+    form.elements.goalPoints.value = String(normalizePointValue(template.points));
+  }
   writeDraftChecklistItems(form, template.subGoals.map((subGoal) => ({
     title: subGoal.title,
     repeatCount: subGoal.repeatCount
@@ -528,6 +551,7 @@ function buildGoalFromTemplate(template, userId, deadline = getDefaultGoalDeadli
     userId,
     title: template.title,
     summary: template.summary,
+    points: normalizePointValue(template.points),
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -547,6 +571,7 @@ function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline &&
     userId,
     title: sourceGoal.title,
     summary: sourceGoal.summary,
+    points: normalizePointValue(sourceGoal.points),
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -570,6 +595,7 @@ async function saveGoalAsTemplate(goalId) {
     id: createId("template"),
     title: goal.title,
     summary: goal.summary,
+    points: normalizePointValue(goal.points),
     subGoals: goal.subGoals.map((subGoal) => ({
       id: createId("template-subgoal"),
       title: subGoal.title,
@@ -614,6 +640,7 @@ async function updateGoalDetails(goalId, form) {
 
   const title = form.elements.editGoalTitle.value.trim();
   const summary = form.elements.editGoalSummary.value.trim();
+  const points = normalizePointValue(form.elements.editGoalPoints.value);
   const deadline = form.elements.editGoalDeadline.value;
   if (!title || !summary || !deadline) {
     window.alert("Please provide a goal title, summary, and deadline.");
@@ -635,6 +662,7 @@ async function updateGoalDetails(goalId, form) {
 
   goal.title = title;
   goal.summary = summary;
+  goal.points = points;
   goal.deadline = deadline;
   goal.subGoals = subGoals;
   if (getGoalProgress(goal) < 100) {
@@ -653,6 +681,7 @@ async function updateTemplateDetails(templateId, form) {
 
   const title = form.elements.editTemplateTitle.value.trim();
   const summary = form.elements.editTemplateSummary.value.trim();
+  const points = normalizePointValue(form.elements.editTemplatePoints.value);
   const subGoals = Array.from(form.querySelectorAll(".editable-subgoal-row")).map((row, index) => ({
     id: template.subGoals[index]?.id || createId("template-subgoal"),
     title: row.querySelector("[name='editableSubGoalTitle']").value.trim(),
@@ -666,6 +695,7 @@ async function updateTemplateDetails(templateId, form) {
 
   template.title = title;
   template.summary = summary;
+  template.points = points;
   template.subGoals = subGoals;
   activeTemplateId = null;
   await persistTemplate(template);
@@ -710,6 +740,76 @@ function getGoalProgress(goal) {
   const totalChecks = goal.subGoals.reduce((sum, subGoal) => sum + subGoal.repeatCount, 0);
   const completedChecks = goal.subGoals.reduce((sum, subGoal) => sum + getCompletedCount(subGoal), 0);
   return totalChecks ? Math.round((completedChecks / totalChecks) * 100) : 0;
+}
+
+function getEarnedGoalPoints(goal) {
+  return goal.leaderApproved ? normalizePointValue(goal.points) : 0;
+}
+
+function getYouthEarnedPoints(userId) {
+  return state.goals
+    .filter((goal) => goal.userId === userId)
+    .reduce((sum, goal) => sum + getEarnedGoalPoints(goal), 0);
+}
+
+function getLevelPointMilestones() {
+  let runningTotal = 0;
+  return LEVEL_POINT_REQUIREMENTS.map((points, index) => {
+    runningTotal += points;
+    return {
+      index: index + 1,
+      points,
+      threshold: runningTotal
+    };
+  });
+}
+
+function renderSessionProgressTracker(sessionUser) {
+  if (!elements.sessionProgressTracker) {
+    return;
+  }
+
+  if (!sessionUser || sessionUser.role !== "youth") {
+    elements.sessionProgressTracker.classList.add("hidden");
+    elements.sessionProgressTracker.innerHTML = "";
+    return;
+  }
+
+  const earnedPoints = getYouthEarnedPoints(sessionUser.id);
+  const milestones = getLevelPointMilestones();
+  const currentLevel = milestones.find((level) => earnedPoints < level.threshold) || milestones[milestones.length - 1];
+
+  elements.sessionProgressTracker.classList.remove("hidden");
+  elements.sessionProgressTracker.innerHTML = `
+    <section class="sidebar-progress-card">
+      <div>
+        <p class="eyebrow">Overall Progress</p>
+        <div class="sidebar-progress-total">
+          <strong>${earnedPoints} pts</strong>
+          <span class="subgoal-meta">Current target: Level ${currentLevel.index}</span>
+        </div>
+      </div>
+      <div class="sidebar-progress-levels">
+        ${milestones.map((level) => {
+          const pointsIntoLevel = Math.max(0, earnedPoints - (level.threshold - level.points));
+          const percent = Math.max(0, Math.min(100, Math.round((pointsIntoLevel / level.points) * 100)));
+          const complete = earnedPoints >= level.threshold;
+          return `
+            <div class="sidebar-progress-level${complete ? " is-complete" : ""}">
+              <div class="sidebar-progress-level-head">
+                <strong>Level ${level.index}</strong>
+                <span class="subgoal-meta">${Math.min(pointsIntoLevel, level.points)}/${level.points} pts</span>
+              </div>
+              <div class="sidebar-progress-bar">
+                <div class="sidebar-progress-fill" style="width:${percent}%"></div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <p class="subgoal-meta">Points are awarded when a Youth leader or bishop approves a completed goal.</p>
+    </section>
+  `;
 }
 
 function getGoalStatus(goal) {
@@ -1026,6 +1126,7 @@ async function addGoal(event) {
     userId: sessionUser.id,
     title,
     summary,
+    points: 0,
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -1064,6 +1165,7 @@ async function createManagedGoal(event) {
   const targetYouth = state.users.find((user) => user.id === targetYouthId);
   const title = form.elements.goalTitle.value.trim();
   const summary = form.elements.goalSummary.value.trim();
+  const points = normalizePointValue(form.elements.goalPoints.value);
   const deadline = form.elements.goalDeadline.value;
   const draftChecklistItems = readDraftChecklistItems(form);
 
@@ -1077,6 +1179,7 @@ async function createManagedGoal(event) {
     userId: targetYouth.id,
     title,
     summary,
+    points,
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -1142,6 +1245,7 @@ async function createTemplate(event) {
     id: createId("template"),
     title,
     summary,
+    points: normalizePointValue(form.elements.templatePoints.value),
     subGoals: draftChecklistItems.map((item) => ({
       id: createId("template-subgoal"),
       title: item.title,
@@ -1284,6 +1388,14 @@ function buildGoalCard(goal, mode) {
 
   const subGoalList = fragment.querySelector(".subgoal-list");
   const actions = fragment.querySelector(".goal-actions");
+
+  const pointsRow = document.createElement("div");
+  pointsRow.className = "goal-points-row";
+  pointsRow.innerHTML = `
+    <span class="goal-points-badge">${normalizePointValue(goal.points)} pts</span>
+    <span class="subgoal-meta">${goal.leaderApproved ? "Awarded" : "Awards after approval"}</span>
+  `;
+  actions.appendChild(pointsRow);
 
   const deadlineMeta = document.createElement("p");
   deadlineMeta.className = "goal-deadline";
@@ -1446,6 +1558,10 @@ function buildGoalCard(goal, mode) {
         <span>Deadline</span>
         <input name="editGoalDeadline" type="date" value="${goal.deadline}" required>
       </label>
+      <label>
+        <span>Point value</span>
+        <input name="editGoalPoints" type="number" min="0" step="1" value="${normalizePointValue(goal.points)}" required>
+      </label>
       <div class="editable-subgoal-list">
         ${buildEditableSubgoalRows(goal.subGoals)}
       </div>
@@ -1520,6 +1636,7 @@ function renderUserDashboard(sessionUser) {
         <span>Deadline</span>
         <input name="goalDeadline" type="date" value="${getDefaultGoalDeadline()}" min="${getTodayDateString()}" required>
       </label>
+      <p class="subgoal-meta">A Youth leader or bishop can assign the point value after reviewing the goal.</p>
       <div class="draft-builder">
         <div class="draft-builder-grid">
           <label>
@@ -1598,6 +1715,10 @@ function buildTemplateWorkspace(template) {
       <label>
         <span>Template summary</span>
         <textarea name="editTemplateSummary">${template.summary}</textarea>
+      </label>
+      <label>
+        <span>Default points</span>
+        <input name="editTemplatePoints" type="number" min="0" step="1" value="${normalizePointValue(template.points)}" required>
       </label>
       <div class="editable-subgoal-list">
         ${buildEditableSubgoalRows(template.subGoals)}
@@ -1726,6 +1847,10 @@ function renderLeaderDashboard(sessionUser) {
         <textarea name="goalSummary" placeholder="Describe what success looks like." required></textarea>
       </label>
       <label>
+        <span>Point value</span>
+        <input name="goalPoints" type="number" min="0" step="1" value="0" required>
+      </label>
+      <label>
         <span>Deadline</span>
         <input name="goalDeadline" type="date" value="${getDefaultGoalDeadline()}" min="${getTodayDateString()}" required>
       </label>
@@ -1797,6 +1922,10 @@ function renderLeaderDashboard(sessionUser) {
       <label>
         <span>Template summary</span>
         <textarea name="templateSummary" placeholder="Describe what this goal template is for." required></textarea>
+      </label>
+      <label>
+        <span>Default points</span>
+        <input name="templatePoints" type="number" min="0" step="1" value="0" required>
       </label>
       <div class="draft-builder">
         <div class="draft-builder-grid">
@@ -1887,6 +2016,7 @@ function render() {
     elements.emptyState.innerHTML = "<h3>Loading data</h3><p>Preparing the current app state and backend mode.</p>";
     elements.userDashboard.classList.add("hidden");
     elements.leaderDashboard.classList.add("hidden");
+    renderSessionProgressTracker(null);
     return;
   }
 
@@ -1904,6 +2034,7 @@ function render() {
 
   if (!loggedIn) {
     elements.dashboardTitle.textContent = "Choose a login to get started";
+    renderSessionProgressTracker(null);
     return;
   }
 
@@ -1918,6 +2049,7 @@ function render() {
     sessionUser.role === "bishop" ? "Bishop Session" :
     sessionUser.role === "youth_leader" ? "Youth Leader Session" :
     "Youth Session";
+  renderSessionProgressTracker(sessionUser);
 
   if (sessionUser.role === "bishop") {
     elements.leaderDashboard.classList.remove("hidden");
@@ -1936,6 +2068,7 @@ function render() {
     elements.emptyState.innerHTML = "<h3>Dashboard error</h3><p>The page hit an unexpected error while rendering. Please refresh and try again.</p>";
     elements.userDashboard.classList.add("hidden");
     elements.leaderDashboard.classList.add("hidden");
+    renderSessionProgressTracker(null);
   }
 }
 

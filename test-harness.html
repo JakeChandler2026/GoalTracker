@@ -122,6 +122,9 @@
           reloadedDoc.getElementById("sessionTitle").textContent.includes("Josh Carter"),
           `User login succeeds${lastAlertMessage ? ` (${lastAlertMessage})` : ""}`
         );
+        const progressTracker = reloadedDoc.getElementById("sessionProgressTracker");
+        assert(!progressTracker.classList.contains("hidden"), "Youth sidebar shows the progress tracker");
+        assert(progressTracker.textContent.includes("Overall Progress"), "Progress tracker renders in the left sidebar");
         assert(reloadedDoc.querySelectorAll(".goal-card").length >= 2, "User dashboard renders goals");
 
         click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
@@ -303,6 +306,7 @@
         reloadedDoc.querySelector("#createManagedGoalForm select[name='targetYouthId']").value = "u1";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='goalTitle']").value = "Leader Assigned Goal";
         reloadedDoc.querySelector("#createManagedGoalForm textarea[name='goalSummary']").value = "Assigned by a Youth leader.";
+        reloadedDoc.querySelector("#createManagedGoalForm input[name='goalPoints']").value = "75";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='newSubGoalTitle']").value = "Attend planning meeting";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='newSubGoalRepeatCount']").value = "2";
         click(reloadedDoc.getElementById("addManagedGoalChecklistItemButton"));
@@ -313,9 +317,11 @@
           card.querySelector(".goal-title").textContent === "Leader Assigned Goal"
         );
         assert(Boolean(adminGoalCard), "Leader can create a goal directly for youth");
+        assert(adminGoalCard.querySelector(".goal-points-badge").textContent.includes("75"), "Leader-assigned points show on the goal");
 
         adminGoalCard.querySelector("input[name='editGoalTitle']").value = "Leader Assigned Goal Updated";
         adminGoalCard.querySelector("textarea[name='editGoalSummary']").value = "Updated by a Youth leader.";
+        adminGoalCard.querySelector("input[name='editGoalPoints']").value = "120";
         submit(adminGoalCard.querySelector("form"));
         await new Promise((resolve) => setTimeout(resolve, 250));
 
@@ -323,6 +329,7 @@
           card.querySelector(".goal-title").textContent === "Leader Assigned Goal Updated"
         );
         assert(Boolean(adminGoalCard), "Leader can edit an existing youth goal");
+        assert(adminGoalCard.querySelector(".goal-points-badge").textContent.includes("120"), "Leader can update a goal's point value");
         click(Array.from(adminGoalCard.querySelectorAll("button")).find((button) => button.textContent.includes("Make Template")));
         await new Promise((resolve) => setTimeout(resolve, 250));
 

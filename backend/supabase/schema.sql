@@ -61,6 +61,7 @@ create table if not exists public.goal_templates (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   summary text not null,
+  points integer not null default 0 check (points >= 0),
   created_by uuid not null references public.profiles(id) on delete restrict,
   ward_id uuid references public.wards(id) on delete cascade,
   created_at timestamptz not null default now(),
@@ -83,6 +84,7 @@ create table if not exists public.goals (
   source_goal_id uuid references public.goals(id) on delete set null,
   title text not null,
   summary text not null,
+  points integer not null default 0 check (points >= 0),
   deadline date not null,
   state public.goal_state not null default 'active',
   leader_approved boolean not null default false,
@@ -121,6 +123,12 @@ create index if not exists idx_profiles_ward_role on public.profiles(ward_id, ro
 create index if not exists idx_goals_youth_id on public.goals(youth_id);
 create index if not exists idx_goals_deadline on public.goals(deadline, state);
 create index if not exists idx_templates_ward on public.goal_templates(ward_id);
+
+alter table if exists public.goal_templates
+  add column if not exists points integer not null default 0;
+
+alter table if exists public.goals
+  add column if not exists points integer not null default 0;
 
 create or replace function public.set_updated_at()
 returns trigger

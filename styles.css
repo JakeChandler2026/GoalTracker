@@ -410,6 +410,89 @@ button:hover {
   color: var(--muted);
 }
 
+#sessionProgressTracker {
+  margin-top: 18px;
+}
+
+.sidebar-progress-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+}
+
+.sidebar-progress-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sidebar-progress-total strong {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.sidebar-progress-levels {
+  display: grid;
+  gap: 10px;
+}
+
+.sidebar-progress-level {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebar-progress-level-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sidebar-progress-level-head strong {
+  font-size: 0.98rem;
+}
+
+.sidebar-progress-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: #e6ddd0;
+  overflow: hidden;
+}
+
+.sidebar-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+}
+
+.sidebar-progress-level.is-complete .sidebar-progress-fill {
+  background: linear-gradient(90deg, #6fbf8d, #1c7c54);
+}
+
+.goal-points-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.goal-points-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fff0dc;
+  color: #8f5917;
+  font-weight: 700;
+}
+
 .goal-title {
   margin: 4px 0 0;
   font-size: 1.35rem;

@@ -12,6 +12,72 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function normalizePointValue(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return 0;
+    }
+    return Math.floor(parsed);
+  }
+
+  function mergeSnapshotProgressData(relationalState, snapshotState) {
+    const nextState = clone(relationalState);
+    const snapshotGoalsById = new Map((snapshotState?.goals || []).map((goal) => [goal.id, goal]));
+    const snapshotTemplatesById = new Map((snapshotState?.templates || []).map((template) => [template.id, template]));
+
+    nextState.goals = nextState.goals.map((goal) => {
+      const snapshotGoal = snapshotGoalsById.get(goal.id);
+      return {
+        ...goal,
+        points: normalizePointValue(snapshotGoal?.points ?? goal.points)
+      };
+    });
+
+    nextState.templates = nextState.templates.map((template) => {
+      const snapshotTemplate = snapshotTemplatesById.get(template.id);
+      return {
+        ...template,
+        points: normalizePointValue(snapshotTemplate?.points ?? template.points)
+      };
+    });
+
+    return nextState;
+  }
+
+  function mergeGoalIntoState(appState, goal, options = {}) {
+    const nextState = clone(appState);
+    const goalIndex = nextState.goals.findIndex((item) => item.id === goal.id);
+    if (goalIndex >= 0) {
+      nextState.goals[goalIndex] = {
+        ...nextState.goals[goalIndex],
+        points: normalizePointValue(goal.points)
+      };
+    } else if (options.insert) {
+      nextState.goals.unshift({
+        ...goal,
+        points: normalizePointValue(goal.points)
+      });
+    }
+    return nextState;
+  }
+
+  function mergeTemplateIntoState(appState, template, options = {}) {
+    const nextState = clone(appState);
+    const templateIndex = nextState.templates.findIndex((item) => item.id === template.id);
+    if (templateIndex >= 0) {
+      nextState.templates[templateIndex] = {
+        ...nextState.templates[templateIndex],
+        points: normalizePointValue(template.points)
+      };
+    } else if (options.insert) {
+      nextState.templates.unshift({
+        ...template,
+        points: normalizePointValue(template.points)
+      });
+    }
+    return nextState;
+  }
+
   function createSupabaseClient() {
     return globalScope.supabase.createClient(runtime.supabase.url, runtime.supabase.anonKey);
   }
@@ -345,10 +411,10 @@
         ] = await Promise.all([
           client.from("wards").select("id, name"),
           client.from("profiles").select("id, email, full_name, role, organization, approval_status, ward_id"),
-          client.from("goals").select("id, youth_id, title, summary, deadline, leader_approved, leader_approved_by, completed_at"),
+          client.from("goals").select("*"),
           client.from("goal_checklist_items").select("id, goal_id, title, repeat_count, sort_order"),
           client.from("goal_checklist_units").select("checklist_item_id, unit_index, completed_at"),
-          client.from("goal_templates").select("id, title, summary"),
+          client.from("goal_templates").select("*"),
           client.from("template_checklist_items").select("id, template_id, title, repeat_count, sort_order")
         ]);
 
@@ -377,7 +443,7 @@
         const wardNamesById = new Map(wards.map((ward) => [ward.id, ward.name]));
         const profileNamesById = new Map(profiles.map((profile) => [profile.id, profile.full_name]));
 
-        return {
+        const relationalState = {
           users: profiles.map((profile) => ({
             id: profile.id,
             role: profile.role,
@@ -393,6 +459,7 @@
             userId: goal.youth_id,
             title: goal.title,
             summary: goal.summary,
+            points: normalizePointValue(goal.points),
             deadline: goal.deadline,
             leaderApproved: Boolean(goal.leader_approved),
             leaderApprovedBy: goal.leader_approved_by ? (profileNamesById.get(goal.leader_approved_by) || null) : null,
@@ -403,10 +470,13 @@
             id: template.id,
             title: template.title,
             summary: template.summary,
+            points: normalizePointValue(template.points),
             subGoals: buildTemplateSubGoals(templateChecklistItems, template.id)
           })),
           session: null
         };
+        const snapshotState = await supabaseSnapshotProvider.loadAppState(storageKey, fallbackState);
+        return mergeSnapshotProgressData(relationalState, snapshotState);
       } catch (error) {
         console.warn("Supabase relational load failed; falling back to snapshot bridge.", error);
         return supabaseSnapshotProvider.loadAppState(storageKey, fallbackState);
@@ -426,6 +496,7 @@
           source_goal_id: payload.sourceGoalId || null,
           title: payload.goal.title,
           summary: payload.goal.summary,
+          points: normalizePointValue(payload.goal.points),
           deadline: payload.goal.deadline,
           leader_approved: Boolean(payload.goal.leaderApproved),
           completed_at: payload.goal.completedAt ? `${payload.goal.completedAt}T00:00:00.000Z` : null
@@ -434,7 +505,8 @@
           throw goalResult.error;
         }
         await upsertGoalChecklist(client, payload.goal.id, payload.goal.subGoals);
-        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+        const nextState = await reloadSupabaseAppState(storageKey, payload.fallbackState);
+        return mergeGoalIntoState(nextState, payload.goal, { insert: true });
       } catch (error) {
         console.warn("Supabase createGoal failed; falling back to snapshot bridge.", error);
         const nextState = await localStorageProvider.createGoal(storageKey, appState, payload);
@@ -449,6 +521,7 @@
         const goalResult = await client.from("goals").update({
           title: payload.goal.title,
           summary: payload.goal.summary,
+          points: normalizePointValue(payload.goal.points),
           deadline: payload.goal.deadline,
           leader_approved: Boolean(payload.goal.leaderApproved),
           leader_approved_by: approverId,
@@ -458,7 +531,8 @@
           throw goalResult.error;
         }
         await upsertGoalChecklist(client, payload.goal.id, payload.goal.subGoals);
-        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+        const nextState = await reloadSupabaseAppState(storageKey, payload.fallbackState);
+        return mergeGoalIntoState(nextState, payload.goal);
       } catch (error) {
         console.warn("Supabase updateGoal failed; falling back to snapshot bridge.", error);
         const nextState = await localStorageProvider.updateGoal(storageKey, appState, payload);
@@ -475,6 +549,7 @@
           id: payload.template.id,
           title: payload.template.title,
           summary: payload.template.summary,
+          points: normalizePointValue(payload.template.points),
           created_by: payload.createdBy,
           ward_id: wardId
         });
@@ -482,7 +557,8 @@
           throw templateResult.error;
         }
         await upsertTemplateChecklist(client, payload.template.id, payload.template.subGoals);
-        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+        const nextState = await reloadSupabaseAppState(storageKey, payload.fallbackState);
+        return mergeTemplateIntoState(nextState, payload.template, { insert: true });
       } catch (error) {
         console.warn("Supabase createTemplate failed; falling back to snapshot bridge.", error);
         const nextState = await localStorageProvider.createTemplate(storageKey, appState, payload);
@@ -495,13 +571,15 @@
         const client = createSupabaseClient();
         const templateResult = await client.from("goal_templates").update({
           title: payload.template.title,
-          summary: payload.template.summary
+          summary: payload.template.summary,
+          points: normalizePointValue(payload.template.points)
         }).eq("id", payload.template.id);
         if (templateResult.error) {
           throw templateResult.error;
         }
         await upsertTemplateChecklist(client, payload.template.id, payload.template.subGoals);
-        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+        const nextState = await reloadSupabaseAppState(storageKey, payload.fallbackState);
+        return mergeTemplateIntoState(nextState, payload.template);
       } catch (error) {
         console.warn("Supabase updateTemplate failed; falling back to snapshot bridge.", error);
         const nextState = await localStorageProvider.updateTemplate(storageKey, appState, payload);
