@@ -10,6 +10,7 @@ backend/supabase/.temp/
 hosting/site-server.pid
 hosting/site-server.log
 hosting/site-server.err.log
+hosting/site-server-error.log
 
 # Local verification artifacts
 chrome-test-output.html
