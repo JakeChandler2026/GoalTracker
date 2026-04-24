@@ -194,6 +194,10 @@ button:hover {
   justify-content: flex-start;
 }
 
+.user-dashboard-switch {
+  margin-top: 0;
+}
+
 .subtab-row {
   display: flex;
   gap: 10px;
@@ -257,6 +261,16 @@ button:hover {
   display: grid;
   gap: 18px;
   margin-bottom: 18px;
+}
+
+.goal-list {
+  display: grid;
+  gap: 18px;
+}
+
+.goal-list-empty p {
+  margin-top: 0;
+  color: var(--muted);
 }
 
 .template-workspace {

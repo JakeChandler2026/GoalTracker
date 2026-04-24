@@ -122,7 +122,12 @@
           reloadedDoc.getElementById("sessionTitle").textContent.includes("Josh Carter"),
           `User login succeeds${lastAlertMessage ? ` (${lastAlertMessage})` : ""}`
         );
-        assert(reloadedDoc.getElementById("userDashboard").children.length >= 2, "User dashboard renders goals");
+        assert(reloadedDoc.querySelectorAll(".goal-card").length >= 2, "User dashboard renders goals");
+
+        click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
+          button.textContent.includes("Create Goal")
+        ));
+        await new Promise((resolve) => setTimeout(resolve, 150));
 
         reloadedDoc.getElementsByName("goalTitle")[0].value = "Scripture Study Goal";
         reloadedDoc.getElementsByName("goalSummary")[0].value = "Build a consistent weekly study habit.";

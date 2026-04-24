@@ -162,6 +162,7 @@ const elements = {
 let activeRole = "youth";
 let activeUserAuthMode = "signin";
 let activeTemplateId = null;
+let activeYouthDashboardView = "goals";
 let state = normalizeState(getFallbackState());
 let bootstrappedState = false;
 
@@ -1039,8 +1040,14 @@ async function addGoal(event) {
     })
   };
 
+  activeYouthDashboardView = "goals";
   await persistGoal(goal, { isCreate: true, createdBy: sessionUser.id });
   form.reset();
+  render();
+}
+
+function setActiveYouthDashboardView(view) {
+  activeYouthDashboardView = view === "create" ? "create" : "goals";
   render();
 }
 
@@ -1485,6 +1492,17 @@ function renderUserDashboard(sessionUser) {
   elements.dashboardTitle.textContent = `${sessionUser.name}'s goals`;
   elements.userDashboard.innerHTML = "";
 
+  const dashboardSwitch = document.createElement("div");
+  dashboardSwitch.className = "tab-row user-dashboard-switch";
+  dashboardSwitch.innerHTML = `
+    <button class="tab-button${activeYouthDashboardView === "goals" ? " active" : ""}" type="button" data-youth-view="goals">Existing Goals</button>
+    <button class="tab-button${activeYouthDashboardView === "create" ? " active" : ""}" type="button" data-youth-view="create">Create Goal</button>
+  `;
+  dashboardSwitch.querySelectorAll("[data-youth-view]").forEach((button) => {
+    button.addEventListener("click", () => setActiveYouthDashboardView(button.dataset.youthView));
+  });
+  elements.userDashboard.appendChild(dashboardSwitch);
+
   const formCard = document.createElement("section");
   formCard.className = "form-card";
   formCard.innerHTML = `
@@ -1524,11 +1542,30 @@ function renderUserDashboard(sessionUser) {
   addGoalForm.addEventListener("submit", addGoal);
   addGoalForm.querySelector("#addGoalChecklistItemButton").addEventListener("click", () => addDraftChecklistItem(addGoalForm));
   renderDraftChecklistItems(addGoalForm);
-  elements.userDashboard.appendChild(formCard);
 
-  goals.forEach((goal) => {
-    elements.userDashboard.appendChild(buildGoalCard(goal, "youth"));
-  });
+  const goalsWrap = document.createElement("div");
+  goalsWrap.className = "goal-list";
+  if (goals.length) {
+    goals.forEach((goal) => {
+      goalsWrap.appendChild(buildGoalCard(goal, "youth"));
+    });
+  } else {
+    const emptyCard = document.createElement("section");
+    emptyCard.className = "form-card goal-list-empty";
+    emptyCard.innerHTML = `
+      <h3>No goals yet</h3>
+      <p>Create your first goal when you are ready to start tracking progress.</p>
+      <button class="secondary-button" type="button">Create Goal</button>
+    `;
+    emptyCard.querySelector("button").addEventListener("click", () => setActiveYouthDashboardView("create"));
+    goalsWrap.appendChild(emptyCard);
+  }
+
+  if (activeYouthDashboardView === "create") {
+    elements.userDashboard.appendChild(formCard);
+  } else {
+    elements.userDashboard.appendChild(goalsWrap);
+  }
 }
 
 function buildTemplateWorkspace(template) {
