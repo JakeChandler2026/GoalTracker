@@ -56,6 +56,21 @@ This is a no-build static website for tracking youth goals, checklist sub-goals,
 
 More local-hosting notes are in `hosting/README.md`.
 
+## Deploy on Vercel
+
+1. Import the GitHub repo into Vercel.
+2. Keep the project root at the repository root.
+3. Framework preset: `Other`.
+4. Build command: leave blank.
+5. Output directory: leave blank.
+6. Deploy.
+
+After deployment:
+
+- set the Supabase Auth site URL to your Vercel production URL
+- add any Vercel preview or production URLs you want to allow in Supabase Auth redirect settings
+- attach your custom domain in Vercel if you want a branded URL
+
 ## Demo accounts
 
 - Youth: `josh@example.com` / `goal123`
