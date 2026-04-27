@@ -3307,15 +3307,19 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
         ${youthGoals.length ? youthGoals.map((goal, index) => {
           const progress = getGoalProgress(goal);
           const status = getGoalStatus(goal);
+          const canApprovePlan = !goal.goalApproved && !isGoalClosed(goal);
           return `
             <div class="youth-goal-progress-row">
               <div class="youth-goal-progress-copy">
                 <strong><span class="goal-number-chip">${index + 1}</span>${goal.title}</strong>
                 <span class="subgoal-meta">${status.label}</span>
               </div>
-              <div class="mini-progress-wrap" aria-label="${progress}% complete">
-                <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:${progress}%"></div></div>
-                <span>${progress}%</span>
+              <div class="youth-goal-progress-controls">
+                <div class="mini-progress-wrap" aria-label="${progress}% complete">
+                  <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:${progress}%"></div></div>
+                  <span>${progress}%</span>
+                </div>
+                ${canApprovePlan ? `<button class="secondary-button compact-card-button" type="button" data-approve-card-goal-id="${goal.id}">Approve Goal</button>` : ""}
               </div>
             </div>
           `;
@@ -3325,6 +3329,12 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
     card.querySelector("[data-edit-youth-id]").addEventListener("click", () => openYouthAccountEditor(youth.id));
     card.querySelector("[data-link-parent-id]")?.addEventListener("click", () => openYouthAccountEditor(youth.id));
     card.querySelector("[data-add-email-id]")?.addEventListener("click", () => openYouthAccountEditor(youth.id));
+    card.querySelectorAll("[data-approve-card-goal-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const pendingGoal = state.goals.find((item) => item.id === button.dataset.approveCardGoalId);
+        approveGoalPlan(button.dataset.approveCardGoalId, pendingGoal ? normalizePointValue(pendingGoal.points) : 0);
+      });
+    });
     grid.appendChild(card);
   });
 
@@ -3813,7 +3823,7 @@ function renderLeaderDashboard(sessionUser) {
   }
 
   goals.forEach((goal) => {
-    elements.leaderDashboard.appendChild(buildGoalCard(goal, "youth_leader"));
+    elements.leaderDashboard.appendChild(buildGoalCard(goal, sessionUser.role === "bishop" ? "bishop" : "youth_leader"));
   });
 }
 

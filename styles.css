@@ -539,6 +539,16 @@ button:hover {
   line-height: 1.25;
 }
 
+.youth-goal-progress-controls {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.youth-goal-progress-controls .compact-card-button {
+  min-width: 118px;
+}
+
 .goal-number-chip {
   flex: 0 0 auto;
   width: 22px;
@@ -1076,6 +1086,10 @@ button:hover {
 
   .youth-goal-progress-row {
     grid-template-columns: 1fr;
+  }
+
+  .youth-goal-progress-controls {
+    justify-items: stretch;
   }
 
   .mini-progress-wrap {

@@ -298,6 +298,24 @@
         click(reloadedDoc.getElementById("logoutButton"));
         await new Promise((resolve) => setTimeout(resolve, 150));
 
+        click(reloadedDoc.getElementById("bishopTab"));
+        reloadedDoc.getElementById("username").value = "ward.bishop@example.com";
+        reloadedDoc.getElementById("password").value = "steward123";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        await openAdminView(reloadedDoc, "Overview");
+        const joshPendingOverviewCard = Array.from(reloadedDoc.querySelectorAll(".managed-youth-card")).find((card) =>
+          card.textContent.includes("Josh Carter") && card.textContent.includes("Scripture Study Goal")
+        );
+        assert(Boolean(joshPendingOverviewCard), "Bishop overview includes youth-created pending goals");
+        assert(
+          Array.from(joshPendingOverviewCard.querySelectorAll("button")).some((button) => button.textContent.includes("Approve Goal")),
+          "Bishop can approve a pending goal from the youth overview card"
+        );
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
         click(reloadedDoc.getElementById("userTab"));
         reloadedDoc.getElementById("username").value = "eli.roberts@example.com";
         reloadedDoc.getElementById("password").value = "pocatello1";
