@@ -3320,6 +3320,7 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
                   <span>${progress}%</span>
                 </div>
                 ${canApprovePlan ? `<button class="secondary-button compact-card-button" type="button" data-approve-card-goal-id="${goal.id}">Approve Goal</button>` : ""}
+                <button class="ghost-button compact-card-button" type="button" data-edit-card-goal-id="${goal.id}">Edit Goal</button>
               </div>
             </div>
           `;
@@ -3334,6 +3335,9 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
         const pendingGoal = state.goals.find((item) => item.id === button.dataset.approveCardGoalId);
         approveGoalPlan(button.dataset.approveCardGoalId, pendingGoal ? normalizePointValue(pendingGoal.points) : 0);
       });
+    });
+    card.querySelectorAll("[data-edit-card-goal-id]").forEach((button) => {
+      button.addEventListener("click", () => openGoalEditor(button.dataset.editCardGoalId));
     });
     grid.appendChild(card);
   });

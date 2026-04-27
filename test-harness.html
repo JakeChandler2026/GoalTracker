@@ -313,6 +313,21 @@
           Array.from(joshPendingOverviewCard.querySelectorAll("button")).some((button) => button.textContent.includes("Approve Goal")),
           "Bishop can approve a pending goal from the youth overview card"
         );
+        const scriptureStudyOverviewRow = Array.from(joshPendingOverviewCard.querySelectorAll(".youth-goal-progress-row")).find((row) =>
+          row.textContent.includes("Scripture Study Goal")
+        );
+        const overviewEditGoalButton = Array.from(scriptureStudyOverviewRow.querySelectorAll("button")).find((button) =>
+          button.textContent.includes("Edit Goal")
+        );
+        assert(Boolean(overviewEditGoalButton), "Bishop can open a pending goal editor from the youth overview card");
+        click(overviewEditGoalButton);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert(
+          reloadedDoc.querySelector(".goal-editor-overlay")?.textContent.includes("Scripture Study Goal"),
+          "Bishop overview edit button opens the selected pending goal"
+        );
+        click(reloadedDoc.querySelector("[data-action='close-editor']"));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         click(reloadedDoc.getElementById("logoutButton"));
         await new Promise((resolve) => setTimeout(resolve, 150));
 
