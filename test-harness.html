@@ -519,6 +519,32 @@
         const leaderOrgSelect = reloadedDoc.querySelector("#createYouthAccountForm select[name='youthOrganization']");
         assert(leaderOrgSelect.options.length === 1 && leaderOrgSelect.value === "young_men", "Young Men leader can only create Young Men youth accounts");
 
+        await openAdminView(reloadedDoc, "Import Ward List");
+        const importYouthRosterForm = reloadedDoc.getElementById("importYouthRosterForm");
+        assert(Boolean(importYouthRosterForm), "Leader can open the ward list import form");
+        importYouthRosterForm.elements.rosterData.value = [
+          "Name,Email,Organization",
+          "Roster Young,,Young Men",
+          "Roster Email,roster.email@example.com,Young Men",
+          "Skipped Sister,,Young Women"
+        ].join("\n");
+        lastAlertMessage = "";
+        submit(importYouthRosterForm);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        assert(lastAlertMessage.includes("Imported 2 youth profiles") && lastAlertMessage.includes("skipped 1 row"), "Ward list import reports imported and skipped rows");
+        assert(
+          Array.from(reloadedDoc.querySelectorAll(".managed-youth-card")).some((card) =>
+            card.textContent.includes("Roster Young") && card.textContent.includes("Login not set up")
+          ),
+          "Ward list import creates profile-only youth without email"
+        );
+        assert(
+          Array.from(reloadedDoc.querySelectorAll(".managed-youth-card")).some((card) =>
+            card.textContent.includes("Roster Email") && card.textContent.includes("Email ready")
+          ),
+          "Ward list import marks youth with email as ready for invitation"
+        );
+
         await openAdminView(reloadedDoc, "Create Goal For Youth");
         reloadedDoc.querySelector("#createManagedGoalForm select[name='targetYouthId']").value = "u1";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='goalTitle']").value = "Leader Assigned Goal";

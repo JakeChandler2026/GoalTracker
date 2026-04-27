@@ -787,6 +787,10 @@ button:hover {
   font: inherit;
 }
 
+.roster-import-textarea {
+  min-height: 220px;
+}
+
 .demo-box p {
   margin: 8px 0;
 }

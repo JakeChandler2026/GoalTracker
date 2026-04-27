@@ -1595,7 +1595,7 @@ function setActiveYouthDashboardView(view) {
 }
 
 function setActiveAdminDashboardView(view) {
-  activeAdminDashboardView = ["create-goal", "create-youth", "create-template", "templates", "goals", "ward-approval", "edit-youth", "ward-management"].includes(view) ? view : "overview";
+  activeAdminDashboardView = ["create-goal", "create-youth", "import-youth", "create-template", "templates", "goals", "ward-approval", "edit-youth", "ward-management"].includes(view) ? view : "overview";
   if (activeAdminDashboardView !== "edit-youth") {
     activeEditingYouthId = null;
   }
@@ -1799,6 +1799,178 @@ async function createYouthAccount(event) {
   } catch (error) {
     console.warn("Youth account creation failed.", error);
     window.alert(error?.message || "The youth account could not be created right now.");
+  }
+}
+
+function splitDelimitedLine(line, delimiter) {
+  const values = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    const nextCharacter = line[index + 1];
+    if (character === "\"" && quoted && nextCharacter === "\"") {
+      current += "\"";
+      index += 1;
+    } else if (character === "\"") {
+      quoted = !quoted;
+    } else if (character === delimiter && !quoted) {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseRosterText(rawText) {
+  const lines = String(rawText || "")
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) {
+    return [];
+  }
+
+  const headerLine = lines[0];
+  const delimiter = (headerLine.match(/\t/g) || []).length > (headerLine.match(/,/g) || []).length ? "\t" : ",";
+  const headers = splitDelimitedLine(headerLine, delimiter).map((header) => header.toLowerCase().replace(/[^a-z0-9]+/g, ""));
+  return lines.slice(1).map((line) => {
+    const cells = splitDelimitedLine(line, delimiter);
+    return headers.reduce((row, header, index) => {
+      row[header] = cells[index] || "";
+      return row;
+    }, {});
+  });
+}
+
+function getRosterField(row, fieldNames) {
+  const normalizedNames = fieldNames.map((fieldName) => fieldName.toLowerCase().replace(/[^a-z0-9]+/g, ""));
+  for (const name of normalizedNames) {
+    if (row[name]) {
+      return String(row[name]).trim();
+    }
+  }
+  return "";
+}
+
+function normalizeRosterOrganization(value) {
+  const normalizedValue = String(value || "").toLowerCase();
+  if (normalizedValue.includes("young women") || normalizedValue.includes("female") || normalizedValue === "f") {
+    return "young_women";
+  }
+  if (normalizedValue.includes("young men") || normalizedValue.includes("male") || normalizedValue === "m") {
+    return "young_men";
+  }
+  return "";
+}
+
+function buildRosterYouth(row, allowedOrganizations, fallbackOrganization) {
+  const fullName = getRosterField(row, ["preferredname", "preferredname", "individualname", "fullname", "name", "membername"]);
+  const firstName = getRosterField(row, ["firstname", "givenname"]);
+  const lastName = getRosterField(row, ["lastname", "surname", "familyname"]);
+  const name = (fullName || `${firstName} ${lastName}`).trim().replace(/\s+/g, " ");
+  const email = getRosterField(row, ["email", "emailaddress", "individualemail", "householdemail", "preferredemail"]).toLowerCase();
+  const organization = normalizeRosterOrganization(getRosterField(row, ["organization", "class", "gender", "sex"])) || fallbackOrganization;
+
+  if (!name || !allowedOrganizations.includes(organization)) {
+    return null;
+  }
+
+  return {
+    name,
+    email,
+    organization
+  };
+}
+
+async function importYouthRoster(event) {
+  event.preventDefault();
+  const sessionUser = getSessionUser();
+  if (!sessionUser || !isWardAdmin(sessionUser)) {
+    return;
+  }
+
+  const form = event.currentTarget;
+  const rosterText = form.elements.rosterData.value;
+  const fallbackOrganization = form.elements.defaultOrganization.value;
+  const allowedOrganizations = getAllowedOrganizationsForManager(sessionUser);
+  const rows = parseRosterText(rosterText);
+  const importedYouth = [];
+  const skippedRows = [];
+  const seenKeys = new Set();
+
+  rows.forEach((row, index) => {
+    const youth = buildRosterYouth(row, allowedOrganizations, fallbackOrganization);
+    if (!youth) {
+      skippedRows.push(index + 2);
+      return;
+    }
+
+    const duplicateKey = youth.email || `${youth.name.toLowerCase()}:${youth.organization}`;
+    if (seenKeys.has(duplicateKey)) {
+      skippedRows.push(index + 2);
+      return;
+    }
+
+    const existingYouth = state.users.some((user) =>
+      user.role === "youth" &&
+      isSameWard(user.ward, sessionUser.ward) &&
+      (
+        (youth.email && String(user.email || "").toLowerCase() === youth.email) ||
+        (!youth.email && user.name.toLowerCase() === youth.name.toLowerCase() && user.organization === youth.organization)
+      )
+    );
+
+    if (existingYouth) {
+      skippedRows.push(index + 2);
+      return;
+    }
+
+    seenKeys.add(duplicateKey);
+    importedYouth.push(youth);
+  });
+
+  if (!importedYouth.length) {
+    window.alert("No new youth were found to import.");
+    return;
+  }
+
+  try {
+    let nextState = state;
+    for (const youth of importedYouth) {
+      const user = {
+        id: createId("youth"),
+        role: "youth",
+        name: youth.name,
+        email: youth.email,
+        password: "",
+        ward: sessionUser.ward,
+        organization: youth.organization,
+        approvalStatus: "verified",
+        loginStatus: youth.email ? "invitation_ready" : "not_invited"
+      };
+      nextState = await backendClient.createYouthAccount(STORAGE_KEY, nextState, {
+        user,
+        password: "",
+        fallbackState: getFallbackState()
+      });
+    }
+
+    state = normalizeState(nextState);
+    saveState();
+    activeAdminDashboardView = "overview";
+    form.reset();
+    window.alert(`Imported ${importedYouth.length} youth profile${importedYouth.length === 1 ? "" : "s"}${skippedRows.length ? ` and skipped ${skippedRows.length} row${skippedRows.length === 1 ? "" : "s"}` : ""}.`);
+    render();
+  } catch (error) {
+    console.warn("Youth roster import failed.", error);
+    window.alert(error?.message || "The ward list could not be imported right now.");
   }
 }
 
@@ -3046,6 +3218,7 @@ function buildAdminDashboardNav(sessionUser, counts = {}) {
     ["overview", "Overview", "Youth progress cards"],
     ["create-goal", "Create Goal For Youth", "Assign a new goal"],
     ["create-youth", "Create Youth Account", "Add a youth"],
+    ["import-youth", "Import Ward List", "Create youth from CSV"],
     ["create-template", "Create Goal Template", "Start a reusable goal"],
     ["templates", "Template Editor", "Edit and assign templates"],
     ["goals", "Review Goals", `${counts.readyCount || 0} ready, ${counts.pendingPlanCount || 0} plans`]
@@ -3267,6 +3440,52 @@ function buildYouthAccountForm(organizationOptions) {
   `;
   youthAccountForm.querySelector("#createYouthAccountForm").addEventListener("submit", createYouthAccount);
   return youthAccountForm;
+}
+
+function buildYouthRosterImportForm(organizationOptions) {
+  const importForm = document.createElement("section");
+  importForm.className = "form-card admin-workflow-card";
+  importForm.innerHTML = `
+    <h3>Import ward list</h3>
+    <form class="inline-form" id="importYouthRosterForm">
+      <label>
+        <span>CSV file</span>
+        <input name="rosterFile" type="file" accept=".csv,.txt,text/csv,text/plain">
+      </label>
+      <label>
+        <span>Default organization</span>
+        <select name="defaultOrganization">
+          ${organizationOptions}
+        </select>
+      </label>
+      <label>
+        <span>Roster rows</span>
+        <textarea name="rosterData" class="roster-import-textarea" placeholder="Name,Email,Organization&#10;Avery Young,,Young Men&#10;Lena Smith,lena@example.com,Young Women" required></textarea>
+      </label>
+      <p class="subgoal-meta">Accepted columns include Name, Full Name, Preferred Name, First Name, Last Name, Email, Organization, Gender, or Sex. Rows without email are created as profiles only.</p>
+      <button class="primary-button" type="submit">Import Youth Profiles</button>
+    </form>
+  `;
+
+  const form = importForm.querySelector("#importYouthRosterForm");
+  form.addEventListener("submit", importYouthRoster);
+  form.elements.rosterFile.addEventListener("change", () => {
+    const file = form.elements.rosterFile.files?.[0];
+    if (!file) {
+      return;
+    }
+    if (!/\.csv$|\.txt$/i.test(file.name)) {
+      window.alert("Please save the ward list as CSV before importing.");
+      form.elements.rosterFile.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      form.elements.rosterData.value = String(reader.result || "");
+    });
+    reader.readAsText(file);
+  });
+  return importForm;
 }
 
 function buildYouthAccountEditor(youth, organizationOptions) {
@@ -3544,6 +3763,11 @@ function renderLeaderDashboard(sessionUser) {
 
   if (activeAdminDashboardView === "create-youth") {
     elements.leaderDashboard.appendChild(buildYouthAccountForm(organizationOptions));
+    return;
+  }
+
+  if (activeAdminDashboardView === "import-youth") {
+    elements.leaderDashboard.appendChild(buildYouthRosterImportForm(organizationOptions));
     return;
   }
 
