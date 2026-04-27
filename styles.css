@@ -237,6 +237,8 @@ button:hover {
 .tab-row {
   margin: 18px 0;
   justify-content: flex-start;
+  flex-wrap: wrap;
+  align-items: stretch;
 }
 
 .user-dashboard-switch {
@@ -250,6 +252,8 @@ button:hover {
 }
 
 .tab-button {
+  flex: 1 1 140px;
+  min-width: 0;
   background: #eee5d8;
   color: #4b4e4c;
 }

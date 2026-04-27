@@ -133,6 +133,14 @@
         assert(reloadedDoc.querySelector(".hero h1").textContent.includes("Pathway to Christ"), "Header uses the Pathway to Christ name");
         assert(!reloadedDoc.body.textContent.includes("Included in this build"), "Build-included UI copy is removed");
         assert(reloadedDoc.querySelector(".hero-image-card img")?.naturalWidth > 0, "Christ image renders in the header");
+        const authPanelBounds = reloadedDoc.getElementById("authPanel").getBoundingClientRect();
+        const adminTabBounds = reloadedDoc.getElementById("adminTab").getBoundingClientRect();
+        assert(
+          adminTabBounds.left >= authPanelBounds.left &&
+          adminTabBounds.right <= authPanelBounds.right &&
+          adminTabBounds.bottom <= authPanelBounds.bottom,
+          "Admin login tab stays visible inside the access panel"
+        );
 
         click(reloadedDoc.getElementById("adminTab"));
         assert(reloadedDoc.getElementById("userAuthModes").classList.contains("hidden"), "Admin login does not expose self-signup controls");
