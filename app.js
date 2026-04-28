@@ -1036,6 +1036,31 @@ function getAwardNamesForYouth(sessionUser) {
   return AWARD_NAMES_BY_ORGANIZATION[sessionUser?.organization] || AWARD_NAMES_BY_ORGANIZATION.young_men;
 }
 
+function getYouthLevelProgress(youth) {
+  const earnedPoints = getYouthEarnedPoints(youth.id);
+  const milestones = getLevelPointMilestones();
+  const awardNames = getAwardNamesForYouth(youth);
+  const completedLevels = milestones.filter((level) => earnedPoints >= level.threshold).length;
+  const nextLevel = milestones[completedLevels] || null;
+  const previousThreshold = completedLevels > 0 ? milestones[completedLevels - 1].threshold : 0;
+  const pointsIntoNextLevel = nextLevel ? Math.max(0, earnedPoints - previousThreshold) : 0;
+  const pointsNeededForNextLevel = nextLevel ? nextLevel.points : 0;
+  const nextPercent = nextLevel
+    ? Math.max(0, Math.min(100, Math.round((pointsIntoNextLevel / pointsNeededForNextLevel) * 100)))
+    : 100;
+
+  return {
+    earnedPoints,
+    completedLevels,
+    currentLevelLabel: completedLevels > 0 ? `Level ${completedLevels}: ${awardNames[completedLevels - 1]}` : "Getting started",
+    nextLevelLabel: nextLevel ? `Level ${nextLevel.index}: ${awardNames[nextLevel.index - 1]}` : "All levels complete",
+    pointsIntoNextLevel,
+    pointsNeededForNextLevel,
+    nextProgressLabel: nextLevel ? `${pointsIntoNextLevel}/${pointsNeededForNextLevel} pts` : `${earnedPoints} pts earned`,
+    nextPercent
+  };
+}
+
 function renderSessionProgressTracker(sessionUser) {
   if (!elements.sessionProgressTracker) {
     return;
@@ -3273,6 +3298,7 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
 
   managedYouth.forEach((youth) => {
     const youthGoals = getOrderedYouthGoals(youth.id);
+    const levelProgress = getYouthLevelProgress(youth);
     const parentLinks = getParentsForYouth(youth.id);
     const parentSummary = parentLinks.length
       ? parentLinks.map(({ parent }) => parent.name).join(", ")
@@ -3302,6 +3328,22 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
       <div class="managed-youth-card-actions">
         ${quickActions}
         <button class="secondary-button compact-card-button" type="button" data-edit-youth-id="${youth.id}">Edit Youth Account</button>
+      </div>
+      <div class="youth-level-progress">
+        <div class="youth-level-progress-header">
+          <div>
+            <span class="subgoal-meta">Current level</span>
+            <strong>${escapeHtml(levelProgress.currentLevelLabel)}</strong>
+          </div>
+          <span class="session-badge">${levelProgress.earnedPoints} pts</span>
+        </div>
+        <div class="youth-level-progress-next">
+          <span class="subgoal-meta">Next: ${escapeHtml(levelProgress.nextLevelLabel)}</span>
+          <span class="subgoal-meta">${escapeHtml(levelProgress.nextProgressLabel)}</span>
+        </div>
+        <div class="mini-progress-bar youth-level-progress-bar" aria-label="${levelProgress.nextPercent}% toward ${escapeHtml(levelProgress.nextLevelLabel)}">
+          <div class="mini-progress-fill" style="width:${levelProgress.nextPercent}%"></div>
+        </div>
       </div>
       <div class="youth-goal-progress-list">
         ${youthGoals.length ? youthGoals.map((goal, index) => {

@@ -310,6 +310,11 @@
         );
         assert(Boolean(joshPendingOverviewCard), "Bishop overview includes youth-created pending goals");
         assert(
+          joshPendingOverviewCard.querySelector(".youth-level-progress")?.textContent.includes("Current level") &&
+            joshPendingOverviewCard.querySelector(".youth-level-progress")?.textContent.includes("0/100 pts"),
+          "Youth progress card shows current level and progress toward the next level"
+        );
+        assert(
           Array.from(joshPendingOverviewCard.querySelectorAll("button")).some((button) => button.textContent.includes("Approve Goal")),
           "Bishop can approve a pending goal from the youth overview card"
         );
