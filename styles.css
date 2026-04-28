@@ -117,7 +117,7 @@ body {
 
 .account-menu {
   position: absolute;
-  top: 32px;
+  top: 48px;
   right: 0;
   padding-right: 16px;
   z-index: 12;
@@ -1052,7 +1052,7 @@ button:hover {
   }
 
   .account-menu {
-    top: 20px;
+    top: 30px;
     right: 0;
     padding-right: 10px;
   }
