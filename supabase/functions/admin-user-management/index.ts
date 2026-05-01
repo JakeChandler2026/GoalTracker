@@ -13,7 +13,9 @@ type AdminActionRequest = {
   password?: string;
   fullName?: string;
   ward?: string;
+  stake?: string;
   organization?: "young_men" | "young_women";
+  competitionOptIn?: boolean;
   leaderId?: string;
   userId?: string;
   approvalStatus?: "approved" | "verified" | "rejected";
@@ -45,31 +47,69 @@ function normalizeWardName(value: string) {
     .trim();
 }
 
-async function getOrCreateWard(adminClient: any, wardName: string) {
+async function getOrCreateStake(adminClient: any, stakeName: string) {
+  const normalizedStakeName = String(stakeName || "Default Stake").trim() || "Default Stake";
+  const stakesResult = await adminClient
+    .from("stakes")
+    .select("id, name");
+
+  if (stakesResult.error) {
+    return { data: null, error: stakesResult.error.message || "Unable to load stakes.", status: 500 };
+  }
+
+  const existingStake = (stakesResult.data || []).find((stake: { id: string; name: string }) =>
+    stake.name.trim().toLowerCase() === normalizedStakeName.toLowerCase()
+  );
+  if (existingStake) {
+    return { data: existingStake, error: null, status: 200 };
+  }
+
+  const createStakeResult = await adminClient
+    .from("stakes")
+    .insert({ name: normalizedStakeName })
+    .select("id, name")
+    .single();
+
+  if (createStakeResult.error) {
+    return { data: null, error: createStakeResult.error.message || "Unable to create the stake.", status: 500 };
+  }
+
+  return { data: createStakeResult.data, error: null, status: 201 };
+}
+
+async function getOrCreateWard(adminClient: any, wardName: string, stakeName = "Default Stake") {
   const normalizedRequestedWard = normalizeWardName(wardName);
   if (!normalizedRequestedWard) {
     return { data: null, error: "Ward name is required.", status: 400 };
   }
 
+  const stakeResult = await getOrCreateStake(adminClient, stakeName);
+  if (stakeResult.error || !stakeResult.data) {
+    return { data: null, error: stakeResult.error || "Unable to resolve the stake.", status: stakeResult.status || 500 };
+  }
+
   const wardsResult = await adminClient
     .from("wards")
-    .select("id, name");
+    .select("id, name, stake_id");
 
   if (wardsResult.error) {
     return { data: null, error: wardsResult.error.message || "Unable to load wards.", status: 500 };
   }
 
-  const existingWard = (wardsResult.data || []).find((ward: { id: string; name: string }) =>
+  const existingWard = (wardsResult.data || []).find((ward: { id: string; name: string; stake_id?: string | null }) =>
     normalizeWardName(ward.name) === normalizedRequestedWard
   );
   if (existingWard) {
+    if (!existingWard.stake_id) {
+      await adminClient.from("wards").update({ stake_id: stakeResult.data.id }).eq("id", existingWard.id);
+    }
     return { data: existingWard, error: null, status: 200 };
   }
 
   const createWardResult = await adminClient
     .from("wards")
-    .insert({ name: wardName.trim() })
-    .select("id, name")
+    .insert({ name: wardName.trim(), stake_id: stakeResult.data.id })
+    .select("id, name, stake_id")
     .single();
 
   if (createWardResult.error) {
@@ -135,7 +175,8 @@ Deno.serve(async (request) => {
       }
 
       const wardName = String(body.ward || "").trim();
-      const wardResult = await getOrCreateWard(adminClient, wardName);
+      const stakeName = String(body.stake || "Default Stake").trim() || "Default Stake";
+      const wardResult = await getOrCreateWard(adminClient, wardName, stakeName);
       if (wardResult.error || !wardResult.data) {
         return errorResponse(String(wardResult.error || "Unable to create the ward."), wardResult.status || 500);
       }
@@ -384,6 +425,7 @@ Deno.serve(async (request) => {
       const fullName = String(body.fullName || "").trim();
       const wardName = String(body.ward || "").trim();
       const organization = body.organization;
+      const competitionOptIn = body.competitionOptIn !== false;
 
       if (!fullName || !wardName || !organization) {
         return errorResponse("Full name, ward, and organization are required.");
@@ -437,6 +479,8 @@ Deno.serve(async (request) => {
             role: "youth",
             ward: wardName,
             organization,
+            competition_opt_in: competitionOptIn,
+            competitionOptIn,
             full_name: fullName
           }
         });
@@ -457,9 +501,10 @@ Deno.serve(async (request) => {
           role: "youth",
           ward_id: wardResult.data.id,
           organization,
+          competition_opt_in: competitionOptIn,
           approval_status: "verified"
         })
-        .select("id, auth_user_id, email, full_name, role, organization, approval_status")
+        .select("id, auth_user_id, email, full_name, role, organization, approval_status, competition_opt_in")
         .single();
 
       if (profileResult.error) {
@@ -482,6 +527,7 @@ Deno.serve(async (request) => {
       const email = String(body.email || "").trim().toLowerCase();
       const fullName = String(body.fullName || "").trim();
       const organization = body.organization;
+      const competitionOptIn = body.competitionOptIn !== false;
 
       if (!youthId || !fullName || !organization) {
         return errorResponse("Youth id, full name, and organization are required.");
@@ -536,10 +582,11 @@ Deno.serve(async (request) => {
         .update({
           email: email || null,
           full_name: fullName,
-          organization
+          organization,
+          competition_opt_in: competitionOptIn
         })
         .eq("id", youthId)
-        .select("id, auth_user_id, email, full_name, role, organization, approval_status")
+        .select("id, auth_user_id, email, full_name, role, organization, approval_status, competition_opt_in")
         .single();
 
       if (profileResult.error) {

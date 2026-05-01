@@ -28,7 +28,7 @@ const authClient = window.BishopGoalTrackerAuthClient || {
     }
     return { ok: true, session: { userId: matchedUser.id, authMode: "demo-local" } };
   },
-  async signUp({ appState, role, name, email, ward, organization, password, createId }) {
+  async signUp({ appState, role, name, email, ward, organization, password, competitionOptIn, createId }) {
     const newUser = {
       id: createId(role === "administrator" ? "admin" : role === "bishop" ? "bishop" : role === "youth_leader" ? "leader" : role === "parent" ? "parent" : "youth"),
       role,
@@ -37,6 +37,7 @@ const authClient = window.BishopGoalTrackerAuthClient || {
       password,
       ward,
       organization,
+      competitionOptIn: role === "youth" ? competitionOptIn !== false : false,
       approvalStatus: role === "youth_leader" ? "pending" : "verified"
     };
     return { ok: true, appState: { ...appState, users: [...appState.users, newUser] }, session: { userId: newUser.id, authMode: "demo-local" } };
@@ -76,9 +77,12 @@ const AWARD_NAMES_BY_ORGANIZATION = {
 };
 
 const firstRunState = {
+  stakes: [
+    { id: "s1", name: "Pocatello Idaho Stake" }
+  ],
   wards: [
-    { id: "w1", name: "Mapleton 1st Ward" },
-    { id: "w2", name: "Pocatello Creek Ward" }
+    { id: "w1", name: "Mapleton 1st Ward", stakeId: "s1", stakeName: "Pocatello Idaho Stake" },
+    { id: "w2", name: "Pocatello Creek Ward", stakeId: "s1", stakeName: "Pocatello Idaho Stake" }
   ],
   users: [
     { id: "a1", role: "administrator", email: "admin@example.com", password: "admin123", name: "Stake Administrator", ward: "All Wards", organization: "all", approvalStatus: "verified" },
@@ -248,6 +252,7 @@ const elements = {
   loginForm: document.getElementById("loginForm"),
   registerForm: document.getElementById("registerForm"),
   registerOrganizationField: document.getElementById("registerOrganizationField"),
+  registerCompetitionField: document.getElementById("registerCompetitionField"),
   username: document.getElementById("username"),
   password: document.getElementById("password"),
   identityLabel: document.getElementById("identityLabel"),
@@ -288,6 +293,7 @@ function cloneFirstRunState() {
 
 function createEmptyState() {
   return {
+    stakes: [],
     wards: [],
     users: [],
     goals: [],
@@ -324,6 +330,7 @@ function mergeDemoSeedState(loadedState) {
   mergeById("users");
   mergeById("goals");
   mergeById("templates");
+  mergeById("stakes");
   mergeById("wards");
 
   const existingParentLinks = new Set((nextState.parentYouthLinks || []).map((link) => `${link.parentId}:${link.youthId}`));
@@ -404,10 +411,31 @@ async function persistTemplate(template, options = {}) {
 function normalizeState(rawState) {
   const nextState = JSON.parse(JSON.stringify(rawState));
 
-  nextState.wards = (nextState.wards || []).map((ward) => ({
-    id: ward.id || createId("ward"),
-    name: String(ward.name || "").trim()
-  })).filter((ward) => ward.name);
+  const defaultStakeName = "Default Stake";
+  nextState.stakes = (nextState.stakes || []).map((stake) => ({
+    id: stake.id || createId("stake"),
+    name: String(stake.name || "").trim()
+  })).filter((stake) => stake.name);
+
+  const ensureStake = (stakeName) => {
+    const normalizedStakeName = String(stakeName || defaultStakeName).trim() || defaultStakeName;
+    let stake = nextState.stakes.find((item) => item.name.toLowerCase() === normalizedStakeName.toLowerCase());
+    if (!stake) {
+      stake = { id: createId("stake"), name: normalizedStakeName };
+      nextState.stakes.push(stake);
+    }
+    return stake;
+  };
+
+  nextState.wards = (nextState.wards || []).map((ward) => {
+    const stake = nextState.stakes.find((item) => item.id === ward.stakeId) || ensureStake(ward.stakeName);
+    return {
+      id: ward.id || createId("ward"),
+      name: String(ward.name || "").trim(),
+      stakeId: stake.id,
+      stakeName: stake.name
+    };
+  }).filter((ward) => ward.name);
 
   nextState.users = nextState.users.map((user) => ({
     ...user,
@@ -415,6 +443,7 @@ function normalizeState(rawState) {
     email: String(user.email || user.username || "").toLowerCase(),
     ward: String(user.ward || "").trim(),
     organization: user.role === "bishop" || user.role === "parent" || user.role === "administrator" ? "all" : (user.organization || (user.role === "youth" ? "young_men" : "young_men")),
+    competitionOptIn: user.role === "youth" ? user.competitionOptIn !== false : false,
     approvalStatus: user.approvalStatus || (user.role === "youth_leader" ? "approved" : "verified"),
     loginStatus: user.loginStatus || ((user.role === "youth" || user.role === "parent") && !user.email ? "not_invited" : "verified")
   }));
@@ -472,7 +501,8 @@ function normalizeState(rawState) {
 
   stateUsersToWardNames(nextState).forEach((wardName) => {
     if (!nextState.wards.some((ward) => isSameWard(ward.name, wardName))) {
-      nextState.wards.push({ id: createId("ward"), name: wardName });
+      const stake = ensureStake(defaultStakeName);
+      nextState.wards.push({ id: createId("ward"), name: wardName, stakeId: stake.id, stakeName: stake.name });
     }
   });
 
@@ -1061,6 +1091,193 @@ function getYouthLevelProgress(youth) {
   };
 }
 
+function buildYouthCompetitionRows(scopeYouth, currentYouthId) {
+  const rows = scopeYouth
+    .filter((youth) => youth.competitionOptIn !== false)
+    .map((youth) => ({
+      youth,
+      progress: getYouthLevelProgress(youth)
+    }))
+    .sort((left, right) =>
+      right.progress.earnedPoints - left.progress.earnedPoints ||
+      left.youth.name.localeCompare(right.youth.name)
+    );
+
+  return rows.map((row, index) => ({
+    ...row,
+    rank: index + 1,
+    isCurrentYouth: row.youth.id === currentYouthId
+  }));
+}
+
+function getYouthCompetitionData(sessionUser) {
+  const wardYouth = state.users.filter((user) =>
+    user.role === "youth" && isSameWard(user.ward, sessionUser.ward)
+  );
+  const stakeYouth = state.users.filter((user) =>
+    user.role === "youth" && isSameStake(user.ward, sessionUser.ward)
+  );
+  const currentGoalTitles = new Set(getOrderedYouthGoals(sessionUser.id)
+    .map((goal) => goal.title.trim().toLowerCase())
+    .filter(Boolean));
+  const sharedGoalRows = state.users
+    .filter((user) => user.role === "youth" && user.id !== sessionUser.id)
+    .map((youth) => {
+      const matchingGoals = getOrderedYouthGoals(youth.id).filter((goal) =>
+        currentGoalTitles.has(goal.title.trim().toLowerCase())
+      );
+      return { youth, matchingGoals, progress: getYouthLevelProgress(youth) };
+    })
+    .filter((row) => row.matchingGoals.length)
+    .sort((left, right) =>
+      right.matchingGoals.length - left.matchingGoals.length ||
+      right.progress.earnedPoints - left.progress.earnedPoints ||
+      left.youth.name.localeCompare(right.youth.name)
+    );
+
+  return {
+    wardRows: buildYouthCompetitionRows(wardYouth, sessionUser.id),
+    stakeRows: buildYouthCompetitionRows(stakeYouth, sessionUser.id),
+    sharedGoalRows
+  };
+}
+
+function buildLeaderboardCard(title, subtitle, rows, sessionUser) {
+  const currentRow = rows.find((row) => row.isCurrentYouth);
+  const visibleRows = rows.slice(0, 10);
+  const leaderPoints = rows[0]?.progress.earnedPoints || 0;
+  const pointsBehindLeader = Math.max(0, leaderPoints - (currentRow?.progress.earnedPoints || 0));
+  const card = document.createElement("section");
+  card.className = "form-card leaderboard-card";
+  const currentSummary = sessionUser.competitionOptIn === false
+    ? "You are non-competitive, so you are not ranked on this leaderboard."
+    : currentRow
+      ? `You are rank ${currentRow.rank} of ${rows.length}. ${currentRow.rank > 10 ? "Your score is outside the top 10 right now. " : ""}${pointsBehindLeader ? `${pointsBehindLeader} points behind first place.` : "You are tied for the lead."}`
+      : "No ranking available yet.";
+  card.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">${escapeHtml(subtitle)}</p>
+        <h3>${escapeHtml(title)}</h3>
+        <p class="subgoal-meta">Top 10 competitive youth. ${escapeHtml(currentSummary)}</p>
+      </div>
+      <div class="session-badge">${escapeHtml(sessionUser.ward)}</div>
+    </div>
+    <div class="leaderboard-list">
+      ${visibleRows.map((row) => {
+        const pointsAhead = Math.max(0, row.progress.earnedPoints - getYouthEarnedPoints(sessionUser.id));
+        return `
+          <div class="leaderboard-row${row.isCurrentYouth ? " is-current" : ""}">
+            <span class="leaderboard-rank">#${row.rank}</span>
+            <div>
+              <strong>${escapeHtml(row.youth.name)}${row.isCurrentYouth ? " (You)" : ""}</strong>
+              <span>${escapeHtml(row.youth.ward)} · ${escapeHtml(row.progress.currentLevelLabel)}</span>
+            </div>
+            <div class="leaderboard-points">
+              <strong>${row.progress.earnedPoints}</strong>
+              <span>${row.isCurrentYouth ? "your points" : pointsAhead ? `${pointsAhead} ahead` : "same points"}</span>
+            </div>
+          </div>
+        `;
+      }).join("") || `<p class="subgoal-meta">No youth have joined this leaderboard yet.</p>`}
+    </div>
+  `;
+  return card;
+}
+
+function buildSharedGoalsCard(sessionUser, sharedGoalRows) {
+  const card = document.createElement("section");
+  card.className = "form-card shared-goals-card";
+  card.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Shared Goals</p>
+        <h3>Others Working On The Same Goals</h3>
+      </div>
+      <div class="session-badge">${sharedGoalRows.length} matches</div>
+    </div>
+    ${sharedGoalRows.length ? `
+      <div class="shared-goal-list">
+        ${sharedGoalRows.map((row) => `
+          <div class="shared-goal-row">
+            <div>
+              <strong>${escapeHtml(row.youth.name)}</strong>
+              <span>${escapeHtml(row.youth.ward)} · ${escapeHtml(row.progress.currentLevelLabel)} · ${row.progress.earnedPoints} pts</span>
+            </div>
+            <div class="shared-goal-tags">
+              ${row.matchingGoals.slice(0, 3).map((goal) => `<span>${escapeHtml(goal.title)}</span>`).join("")}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    ` : `<p class="subgoal-meta">No one else currently has a goal with the same title. Shared goals will appear here as youth choose similar goals.</p>`}
+  `;
+  return card;
+}
+
+async function updateCompetitionPreference(competitionOptIn) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser || sessionUser.role !== "youth") {
+    return;
+  }
+
+  const updatedUser = {
+    ...sessionUser,
+    competitionOptIn
+  };
+
+  try {
+    const nextState = backendClient.updateCompetitionPreference
+      ? await backendClient.updateCompetitionPreference(STORAGE_KEY, state, {
+        user: updatedUser,
+        fallbackState: getFallbackState()
+      })
+      : {
+        ...state,
+        users: state.users.map((user) => user.id === updatedUser.id ? updatedUser : user)
+      };
+    state = normalizeState(nextState);
+    state.session = { ...state.session, userId: updatedUser.id };
+    saveState();
+    render();
+  } catch (error) {
+    console.warn("Competition preference update failed.", error);
+    window.alert(error?.message || "Your competition preference could not be saved right now.");
+  }
+}
+
+function buildCompetitionPreferenceCard(sessionUser) {
+  const card = document.createElement("section");
+  card.className = "form-card competition-preference-card";
+  const isCompetitive = sessionUser.competitionOptIn !== false;
+  card.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Competition Preference</p>
+        <h3>${isCompetitive ? "Competitive" : "Non-Competitive"}</h3>
+        <p class="subgoal-meta">${isCompetitive ? "Your points and award level can appear on ward and stake leaderboards." : "Your points are private from leaderboard ranking. Your goals still track normally."}</p>
+      </div>
+      <button class="${isCompetitive ? "ghost-button" : "secondary-button"}" type="button" data-action="toggle-competition">
+        ${isCompetitive ? "Go Non-Competitive" : "Join Leaderboards"}
+      </button>
+    </div>
+  `;
+  card.querySelector("[data-action='toggle-competition']").addEventListener("click", () => updateCompetitionPreference(!isCompetitive));
+  return card;
+}
+
+function buildYouthCompetitionBoard(sessionUser) {
+  const stake = getStakeForWardName(sessionUser.ward);
+  const data = getYouthCompetitionData(sessionUser);
+  const board = document.createElement("div");
+  board.className = "competition-board";
+  board.appendChild(buildCompetitionPreferenceCard(sessionUser));
+  board.appendChild(buildLeaderboardCard("Ward Leaderboard", "Ward Competition", data.wardRows, sessionUser));
+  board.appendChild(buildLeaderboardCard("Stake Leaderboard", stake?.name || "Stake Competition", data.stakeRows, sessionUser));
+  board.appendChild(buildSharedGoalsCard(sessionUser, data.sharedGoalRows));
+  return board;
+}
+
 function renderSessionProgressTracker(sessionUser) {
   if (!elements.sessionProgressTracker) {
     return;
@@ -1216,6 +1433,25 @@ function isSameWard(leftWard, rightWard) {
   return Boolean(leftKey && rightKey && leftKey === rightKey);
 }
 
+function findWardByName(wardName) {
+  return state.wards.find((ward) => isSameWard(ward.name, wardName)) || null;
+}
+
+function getStakeForWardName(wardName) {
+  const ward = findWardByName(wardName);
+  if (!ward) {
+    return null;
+  }
+
+  return state.stakes.find((stake) => stake.id === ward.stakeId) || { id: ward.stakeId, name: ward.stakeName || "Default Stake" };
+}
+
+function isSameStake(leftWardName, rightWardName) {
+  const leftStake = getStakeForWardName(leftWardName);
+  const rightStake = getStakeForWardName(rightWardName);
+  return Boolean(leftStake?.id && rightStake?.id && leftStake.id === rightStake.id);
+}
+
 function canManageYouth(manager, youth) {
   if (!manager || !youth || youth.role !== "youth") {
     return false;
@@ -1364,6 +1600,7 @@ function setActiveRole(role) {
     role === "parent" ? "Enter parent email" :
     "Enter youth email";
   elements.registerOrganizationField.classList.toggle("hidden", role === "bishop" || role === "parent" || role === "administrator");
+  elements.registerCompetitionField?.classList.toggle("hidden", role !== "youth");
   setUserAuthMode(activeUserAuthMode);
   elements.userAuthModes.classList.toggle("hidden", role === "administrator");
 }
@@ -1417,6 +1654,7 @@ async function registerUser(event) {
   const email = form.elements.registerEmail.value.trim().toLowerCase();
   const ward = form.elements.registerWard.value.trim();
   const organization = activeRole === "bishop" || activeRole === "parent" ? "all" : form.elements.registerOrganization.value;
+  const competitionOptIn = activeRole === "youth" ? form.elements.registerCompetitionOptIn.checked : false;
   const password = form.elements.registerPassword.value;
 
   if (!name || !email || !ward || !password) {
@@ -1431,6 +1669,7 @@ async function registerUser(event) {
     email,
     ward,
     organization,
+    competitionOptIn,
     password,
     createId
   });
@@ -1624,7 +1863,7 @@ async function addGoal(event) {
 }
 
 function setActiveYouthDashboardView(view) {
-  activeYouthDashboardView = ["create", "prioritize"].includes(view) ? view : "goals";
+  activeYouthDashboardView = ["create", "prioritize", "competition"].includes(view) ? view : "goals";
   render();
 }
 
@@ -1788,6 +2027,7 @@ async function createYouthAccount(event) {
   const name = form.elements.youthName.value.trim();
   const email = form.elements.youthEmail.value.trim().toLowerCase();
   const organization = form.elements.youthOrganization.value;
+  const competitionOptIn = form.elements.youthCompetitionOptIn.checked;
   const password = form.elements.youthPassword.value;
   const allowedOrganizations = getAllowedOrganizationsForManager(sessionUser);
 
@@ -1815,6 +2055,7 @@ async function createYouthAccount(event) {
     password,
     ward: sessionUser.ward,
     organization,
+    competitionOptIn,
     approvalStatus: "verified",
     loginStatus: email && password ? "verified" : email ? "invitation_ready" : "not_invited"
   };
@@ -2618,6 +2859,7 @@ function renderUserDashboard(sessionUser) {
   dashboardSwitch.className = "tab-row user-dashboard-switch";
   dashboardSwitch.innerHTML = `
     <button class="tab-button${activeYouthDashboardView === "goals" ? " active" : ""}" type="button" data-youth-view="goals">Existing Goals</button>
+    <button class="tab-button${activeYouthDashboardView === "competition" ? " active" : ""}" type="button" data-youth-view="competition">Competition</button>
     <button class="tab-button${activeYouthDashboardView === "prioritize" ? " active" : ""}" type="button" data-youth-view="prioritize">Prioritize Goals</button>
     <button class="tab-button${activeYouthDashboardView === "create" ? " active" : ""}" type="button" data-youth-view="create">Create Goal</button>
   `;
@@ -2687,6 +2929,8 @@ function renderUserDashboard(sessionUser) {
 
   if (activeYouthDashboardView === "create") {
     elements.userDashboard.appendChild(formCard);
+  } else if (activeYouthDashboardView === "competition") {
+    elements.userDashboard.appendChild(buildYouthCompetitionBoard(sessionUser));
   } else if (activeYouthDashboardView === "prioritize") {
     elements.userDashboard.appendChild(buildGoalPriorityBoard(sessionUser, goals));
   } else {
@@ -2787,10 +3031,12 @@ function getWardOverviewRows() {
       const bishops = usersInWard.filter((user) => user.role === "bishop");
       const parents = usersInWard.filter((user) => user.role === "parent");
       const goals = state.goals.filter((goal) => youthIds.has(goal.userId));
+      const stake = getStakeForWardName(wardName);
 
       return {
         wardKey,
         wardName,
+        stakeName: stake?.name || "Default Stake",
         bishops,
         leaders,
         parents,
@@ -2799,10 +3045,6 @@ function getWardOverviewRows() {
       };
     })
     .sort((left, right) => left.wardName.localeCompare(right.wardName));
-}
-
-function findWardByName(wardName) {
-  return state.wards.find((ward) => isSameWard(ward.name, wardName)) || null;
 }
 
 function getBishopOptions() {
@@ -2820,6 +3062,7 @@ async function createAdminWard(event) {
 
   const form = event.currentTarget;
   const wardName = form.elements.wardName.value.trim();
+  const stakeName = form.elements.stakeName.value.trim();
   if (!wardName) {
     window.alert("Please enter a ward name.");
     return;
@@ -2832,7 +3075,8 @@ async function createAdminWard(event) {
 
   const ward = {
     id: createId("ward"),
-    name: wardName
+    name: wardName,
+    stakeName: stakeName || "Default Stake"
   };
 
   try {
@@ -3004,6 +3248,9 @@ function buildWardManagementView() {
         <label>Ward name
           <input name="wardName" type="text" placeholder="Cedar Ridge Ward" required>
         </label>
+        <label>Stake name
+          <input name="stakeName" type="text" placeholder="Mapleton Stake" required>
+        </label>
         <button type="submit">Create Ward</button>
       </form>
       <form class="form-card inline-form" id="createAdminBishopForm">
@@ -3038,7 +3285,7 @@ function buildWardManagementView() {
         <section class="form-card admin-ward-card">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Ward</p>
+              <p class="eyebrow">${escapeHtml(ward.stakeName)}</p>
               <h3>${escapeHtml(ward.wardName)}</h3>
             </div>
             <div class="session-badge">${ward.bishops.length} bishops</div>
@@ -3505,6 +3752,10 @@ function buildYouthAccountForm(organizationOptions) {
         <select name="youthOrganization">
           ${organizationOptions}
         </select>
+      </label>
+      <label class="checkbox-label">
+        <input name="youthCompetitionOptIn" type="checkbox" checked>
+        <span>Include on ward and stake leaderboards</span>
       </label>
       <label>
         <span>Temporary password optional</span>

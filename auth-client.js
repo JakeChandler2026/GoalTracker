@@ -17,13 +17,28 @@
     return role === "youth" || role === "youth_leader" || role === "bishop" || role === "parent";
   }
 
+  async function ensureDefaultStakeRecord(client) {
+    const existingStake = await client.from("stakes").select("id, name").eq("name", "Default Stake").maybeSingle();
+    if (existingStake.data?.id) {
+      return existingStake.data;
+    }
+
+    const insertResult = await client.from("stakes").insert({ name: "Default Stake" }).select("id, name").single();
+    if (insertResult.error) {
+      throw insertResult.error;
+    }
+
+    return insertResult.data;
+  }
+
   async function ensureWardRecord(client, wardName) {
     const existingWard = await client.from("wards").select("id, name").eq("name", wardName).maybeSingle();
     if (existingWard.data?.id) {
       return existingWard.data;
     }
 
-    const insertResult = await client.from("wards").insert({ name: wardName }).select("id, name").single();
+    const stake = await ensureDefaultStakeRecord(client);
+    const insertResult = await client.from("wards").insert({ name: wardName, stake_id: stake.id }).select("id, name").single();
     if (insertResult.error) {
       throw insertResult.error;
     }
@@ -34,7 +49,7 @@
   async function fetchProfileByEmail(client, email) {
     const result = await client
       .from("profiles")
-      .select("id, auth_user_id, email, full_name, role, organization, approval_status, ward:wards(name)")
+      .select("id, auth_user_id, email, full_name, role, organization, approval_status, competition_opt_in, ward:wards(name)")
       .eq("email", email)
       .maybeSingle();
 
@@ -53,6 +68,7 @@
       name: result.data.full_name,
       role: result.data.role,
       organization: result.data.role === "bishop" || result.data.role === "parent" || result.data.role === "administrator" ? "all" : result.data.organization,
+      competitionOptIn: result.data.role === "youth" ? result.data.competition_opt_in !== false : false,
       approvalStatus: result.data.approval_status,
       ward: result.data.ward?.name || ""
     };
@@ -75,7 +91,7 @@
           .from("profiles")
           .update({ auth_user_id: authUser.id, email })
           .eq("id", existingProfile.id)
-          .select("id, auth_user_id, email, full_name, role, organization, approval_status, ward:wards(name)")
+          .select("id, auth_user_id, email, full_name, role, organization, approval_status, competition_opt_in, ward:wards(name)")
           .single();
 
         if (linkResult.error) {
@@ -88,7 +104,8 @@
           email: linkResult.data.email,
           name: linkResult.data.full_name,
           role: linkResult.data.role,
-            organization: linkResult.data.role === "bishop" || linkResult.data.role === "parent" || linkResult.data.role === "administrator" ? "all" : linkResult.data.organization,
+          organization: linkResult.data.role === "bishop" || linkResult.data.role === "parent" || linkResult.data.role === "administrator" ? "all" : linkResult.data.organization,
+          competitionOptIn: linkResult.data.role === "youth" ? linkResult.data.competition_opt_in !== false : false,
           approvalStatus: linkResult.data.approval_status,
           ward: linkResult.data.ward?.name || ""
         };
@@ -102,6 +119,7 @@
     const ward = String(metadata.ward || "").trim();
     const fullName = String(metadata.full_name || metadata.fullName || "").trim();
     const organization = role === "bishop" || role === "parent" || role === "administrator" ? "all" : metadata.organization;
+    const competitionOptIn = role === "youth" ? metadata.competition_opt_in !== false && metadata.competitionOptIn !== false : false;
 
     if (!isSelfSignupRoleAllowed(role) || !ward || !fullName || !organization) {
       return null;
@@ -116,8 +134,9 @@
       role,
       ward_id: wardRecord.id,
       organization: role === "bishop" || role === "parent" || role === "administrator" ? "all" : organization,
-      approval_status: getApprovalStatusForRole(role)
-    }).select("id, email, full_name, role, organization, approval_status, ward:wards(name)").single();
+      approval_status: getApprovalStatusForRole(role),
+      competition_opt_in: competitionOptIn
+    }).select("id, email, full_name, role, organization, approval_status, competition_opt_in, ward:wards(name)").single();
 
     if (profileInsert.error) {
       throw profileInsert.error;
@@ -129,6 +148,7 @@
       name: profileInsert.data.full_name,
       role: profileInsert.data.role,
       organization: profileInsert.data.role === "bishop" || profileInsert.data.role === "parent" || profileInsert.data.role === "administrator" ? "all" : profileInsert.data.organization,
+      competitionOptIn: profileInsert.data.role === "youth" ? profileInsert.data.competition_opt_in !== false : false,
       approvalStatus: profileInsert.data.approval_status,
       ward: profileInsert.data.ward?.name || ward
     };
@@ -174,7 +194,7 @@
         session: { userId: matchedUser.id, authMode: "demo-local" }
       };
     },
-    async signUp({ appState, role, name, email, ward, organization, password, createId }) {
+    async signUp({ appState, role, name, email, ward, organization, password, competitionOptIn, createId }) {
       const emailInUse = appState.users.some((user) => String(user.email || "").toLowerCase() === email);
       if (emailInUse) {
         return { ok: false, error: "That email already has an account. Please sign in instead." };
@@ -188,6 +208,7 @@
         password,
         ward,
         organization,
+        competitionOptIn: role === "youth" ? competitionOptIn !== false : false,
         approvalStatus: role === "youth_leader" ? "pending" : "verified"
       };
 
@@ -286,7 +307,7 @@
         }
       };
     },
-    async signUp({ appState, role, name, email, ward, organization, password }) {
+    async signUp({ appState, role, name, email, ward, organization, password, competitionOptIn }) {
       if (!runtime.canBootSupabase) {
         return {
           ok: false,
@@ -308,6 +329,8 @@
             role,
             ward,
             organization,
+            competition_opt_in: role === "youth" ? competitionOptIn !== false : false,
+            competitionOptIn: role === "youth" ? competitionOptIn !== false : false,
             full_name: name
           }
         }
@@ -340,6 +363,7 @@
           name: ensuredProfile.name,
           ward: ensuredProfile.ward,
           organization: ensuredProfile.organization,
+          competitionOptIn: ensuredProfile.competitionOptIn,
           approvalStatus: ensuredProfile.approvalStatus
         };
 

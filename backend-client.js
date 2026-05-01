@@ -352,6 +352,17 @@
       }
       return nextState;
     },
+    async updateCompetitionPreference(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      const userIndex = nextState.users.findIndex((user) => user.id === payload.user.id);
+      if (userIndex >= 0) {
+        nextState.users[userIndex] = {
+          ...nextState.users[userIndex],
+          competitionOptIn: payload.user.competitionOptIn !== false
+        };
+      }
+      return nextState;
+    },
     async updateParentYouthLinks(storageKey, appState, payload) {
       const nextState = clone(appState);
       const parentIndex = nextState.users.findIndex((user) => user.id === payload.parent.id);
@@ -465,6 +476,7 @@
       try {
         const client = createSupabaseClient();
         const [
+          stakesResult,
           wardsResult,
           profilesResult,
           goalsResult,
@@ -474,8 +486,9 @@
           templatesResult,
           templateChecklistItemsResult
         ] = await Promise.all([
-          client.from("wards").select("id, name"),
-          client.from("profiles").select("id, auth_user_id, email, full_name, role, organization, approval_status, ward_id"),
+          client.from("stakes").select("id, name"),
+          client.from("wards").select("id, name, stake_id"),
+          client.from("profiles").select("id, auth_user_id, email, full_name, role, organization, approval_status, ward_id, competition_opt_in"),
           client.from("goals").select("*"),
           client.from("goal_checklist_items").select("id, goal_id, title, repeat_count, sort_order"),
           client.from("goal_checklist_units").select("checklist_item_id, unit_index, completed_at"),
@@ -485,6 +498,7 @@
         ]);
 
         const firstError = [
+          stakesResult.error,
           wardsResult.error,
           profilesResult.error,
           goalsResult.error,
@@ -500,6 +514,7 @@
         }
 
         const wards = wardsResult.data || [];
+        const stakes = stakesResult.data || [];
         const profiles = profilesResult.data || [];
         const goals = goalsResult.data || [];
         const goalChecklistItems = goalChecklistItemsResult.data || [];
@@ -509,9 +524,23 @@
         const templateChecklistItems = templateChecklistItemsResult.data || [];
 
         const wardNamesById = new Map(wards.map((ward) => [ward.id, ward.name]));
+        const stakesById = new Map(stakes.map((stake) => [stake.id, stake]));
         const profileNamesById = new Map(profiles.map((profile) => [profile.id, profile.full_name]));
 
         const relationalState = {
+          stakes: stakes.map((stake) => ({
+            id: stake.id,
+            name: stake.name
+          })),
+          wards: wards.map((ward) => {
+            const stake = stakesById.get(ward.stake_id);
+            return {
+              id: ward.id,
+              name: ward.name,
+              stakeId: ward.stake_id || "",
+              stakeName: stake?.name || ""
+            };
+          }),
           users: profiles.map((profile) => ({
             id: profile.id,
             role: profile.role,
@@ -520,6 +549,7 @@
             name: profile.full_name,
             ward: wardNamesById.get(profile.ward_id) || "",
             organization: profile.role === "bishop" || profile.role === "parent" || profile.role === "administrator" ? "all" : profile.organization,
+            competitionOptIn: profile.role === "youth" ? profile.competition_opt_in !== false : false,
             approvalStatus: profile.approval_status,
             loginStatus: (profile.role === "youth" || profile.role === "parent") && !profile.auth_user_id
               ? (profile.email ? "invitation_ready" : "not_invited")
@@ -684,7 +714,8 @@
         password: payload.password,
         fullName: payload.user.name,
         ward: payload.user.ward,
-        organization: payload.user.organization
+        organization: payload.user.organization,
+        competitionOptIn: payload.user.competitionOptIn !== false
       });
       return reloadSupabaseAppState(storageKey, payload.fallbackState);
     },
@@ -694,9 +725,30 @@
         youthId: payload.user.id,
         email: payload.user.email,
         fullName: payload.user.name,
-        organization: payload.user.organization
+        organization: payload.user.organization,
+        competitionOptIn: payload.user.competitionOptIn !== false
       });
       return reloadSupabaseAppState(storageKey, payload.fallbackState);
+    },
+    async updateCompetitionPreference(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const result = await client
+          .from("profiles")
+          .update({ competition_opt_in: payload.user.competitionOptIn !== false })
+          .eq("id", payload.user.id)
+          .select("id")
+          .single();
+        if (result.error) {
+          throw result.error;
+        }
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase updateCompetitionPreference failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.updateCompetitionPreference(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
     },
     async updateParentYouthLinks(storageKey, appState, payload) {
       const client = createSupabaseClient();
@@ -732,7 +784,8 @@
     async createWard(storageKey, appState, payload) {
       const client = createSupabaseClient();
       await invokeAdminUserManagement(client, "create_ward", {
-        ward: payload.ward.name
+        ward: payload.ward.name,
+        stake: payload.ward.stakeName || "Default Stake"
       });
       return reloadSupabaseAppState(storageKey, payload.fallbackState);
     },
@@ -783,6 +836,9 @@
     },
     async updateYouthAccount(storageKey, appState, payload) {
       return (activeProvider.updateYouthAccount || localStorageProvider.updateYouthAccount)(storageKey, appState, payload);
+    },
+    async updateCompetitionPreference(storageKey, appState, payload) {
+      return (activeProvider.updateCompetitionPreference || localStorageProvider.updateCompetitionPreference)(storageKey, appState, payload);
     },
     async updateParentYouthLinks(storageKey, appState, payload) {
       return (activeProvider.updateParentYouthLinks || localStorageProvider.updateParentYouthLinks)(storageKey, appState, payload);

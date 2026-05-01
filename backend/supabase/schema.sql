@@ -32,12 +32,33 @@ begin
 end
 $$;
 
+create table if not exists public.stakes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  created_at timestamptz not null default now()
+);
+
+insert into public.stakes (name)
+values ('Default Stake')
+on conflict (name) do nothing;
+
 create table if not exists public.wards (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
+  stake_id uuid references public.stakes(id) on delete restrict,
   bishop_name text,
   created_at timestamptz not null default now()
 );
+
+alter table if exists public.wards
+  add column if not exists stake_id uuid references public.stakes(id) on delete restrict;
+
+update public.wards
+set stake_id = (select id from public.stakes where name = 'Default Stake' limit 1)
+where stake_id is null;
+
+alter table if exists public.wards
+  alter column stake_id set not null;
 
 create table if not exists public.profiles (
   id uuid primary key default gen_random_uuid(),
@@ -47,6 +68,7 @@ create table if not exists public.profiles (
   role public.app_role not null,
   ward_id uuid not null references public.wards(id) on delete restrict,
   organization public.organization_type not null default 'young_men',
+  competition_opt_in boolean not null default true,
   approval_status public.approval_state not null default 'verified',
   approved_by uuid references public.profiles(id) on delete set null,
   approved_at timestamptz,
@@ -134,6 +156,7 @@ create table if not exists public.app_runtime_snapshots (
 
 create index if not exists idx_profiles_ward_role on public.profiles(ward_id, role, organization);
 create index if not exists idx_profiles_auth_user_id on public.profiles(auth_user_id);
+create index if not exists idx_wards_stake_id on public.wards(stake_id);
 create index if not exists idx_goals_youth_id on public.goals(youth_id);
 create index if not exists idx_goals_deadline on public.goals(deadline, state);
 create index if not exists idx_templates_ward on public.goal_templates(ward_id);
@@ -144,6 +167,9 @@ alter table if exists public.goal_templates
 
 alter table if exists public.profiles
   add column if not exists auth_user_id uuid unique references auth.users(id) on delete set null;
+
+alter table if exists public.profiles
+  add column if not exists competition_opt_in boolean not null default true;
 
 do $$
 begin
@@ -459,6 +485,7 @@ before update on public.goals
 for each row
 execute function public.set_updated_at();
 
+alter table public.stakes enable row level security;
 alter table public.wards enable row level security;
 alter table public.profiles enable row level security;
 alter table public.goal_templates enable row level security;
@@ -468,6 +495,28 @@ alter table public.goal_checklist_items enable row level security;
 alter table public.goal_checklist_units enable row level security;
 alter table public.parent_youth_links enable row level security;
 alter table public.app_runtime_snapshots enable row level security;
+
+drop policy if exists "stakes_authenticated_read" on public.stakes;
+create policy "stakes_authenticated_read"
+  on public.stakes
+  for select
+  to authenticated
+  using (true);
+
+drop policy if exists "stakes_authenticated_insert" on public.stakes;
+create policy "stakes_authenticated_insert"
+  on public.stakes
+  for insert
+  to authenticated
+  with check (public.current_user_role() = 'administrator');
+
+drop policy if exists "stakes_authenticated_update" on public.stakes;
+create policy "stakes_authenticated_update"
+  on public.stakes
+  for update
+  to authenticated
+  using (public.current_user_role() = 'administrator')
+  with check (public.current_user_role() = 'administrator');
 
 drop policy if exists "wards_authenticated_read" on public.wards;
 create policy "wards_authenticated_read"
