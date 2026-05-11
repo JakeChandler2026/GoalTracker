@@ -1272,3 +1272,261 @@ button:hover {
     align-items: stretch;
   }
 }
+
+/* Bright production theme */
+
+:root {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --text: #1f2340;
+  --muted: #676879;
+  --accent: #0073ea;
+  --accent-2: #00c875;
+  --accent-3: #a25ddc;
+  --border: #d0d4e4;
+  --danger: #e2445c;
+  --shadow: 0 16px 42px rgba(29, 43, 76, 0.12);
+}
+
+body {
+  background: #ffffff;
+}
+
+.page-shell {
+  width: min(1680px, calc(100% - 32px));
+}
+
+.hero {
+  padding: 24px;
+  border: 1px solid #d0d4e4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(29, 43, 76, 0.07);
+}
+
+.hero-copy,
+.subgoal-meta,
+.admin-nav-button span,
+.leaderboard-row span,
+.shared-goal-row span {
+  color: #676879;
+}
+
+.hero-image-card,
+.panel,
+.goal-card,
+.leader-summary,
+.form-card,
+.demo-box,
+.empty-state,
+.sidebar-progress-card,
+.account-menu-panel {
+  backdrop-filter: none;
+  background: #ffffff;
+  border: 1px solid #d0d4e4;
+  box-shadow: 0 10px 28px rgba(29, 43, 76, 0.08);
+}
+
+.hero-image-card {
+  overflow: hidden;
+  border-color: #f0d28a;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(255, 203, 0, 0.18);
+}
+
+.hero-image-card img {
+  filter: brightness(1.14) contrast(1.08) saturate(1.2) sepia(0.04);
+  transform: scale(1.015);
+}
+
+.panel {
+  padding: 22px;
+}
+
+.eyebrow {
+  color: #0073ea;
+  letter-spacing: 0.08em;
+}
+
+button {
+  border-radius: 6px;
+  min-height: 42px;
+  box-shadow: none;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 115, 234, 0.18);
+}
+
+.primary-button,
+.account-menu-button {
+  background: #0073ea;
+  color: #ffffff;
+}
+
+.secondary-button {
+  background: #cce5ff;
+  color: #0055c4;
+}
+
+.ghost-button {
+  background: #ffffff;
+  border: 1px solid #c3c6d4;
+  color: #323338;
+}
+
+.danger-button {
+  background: #ffebef;
+  color: #e2445c;
+}
+
+.tab-button {
+  flex: 0 1 auto;
+  border: 1px solid #d0d4e4;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #323338;
+  font-weight: 700;
+}
+
+.tab-button.active {
+  background: #0073ea;
+  border-color: #0073ea;
+  color: #ffffff;
+}
+
+input,
+select,
+textarea {
+  border-radius: 6px;
+  border-color: #c3c6d4;
+  background: #ffffff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid rgba(0, 115, 234, 0.24);
+  border-color: #0073ea;
+}
+
+.session-badge {
+  background: #cce5ff;
+  color: #0055c4;
+  border: 1px solid rgba(0, 115, 234, 0.22);
+}
+
+.admin-nav-button {
+  border-radius: 8px;
+  border-color: #d0d4e4;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(29, 43, 76, 0.08);
+}
+
+.admin-nav-button.active {
+  background: #eef6ff;
+  border-color: #0073ea;
+}
+
+.goal-card {
+  border-left: 8px solid #0073ea;
+}
+
+.goal-card:has(.goal-status.approved) {
+  border-left-color: #00c875;
+}
+
+.goal-card:has(.goal-status.pending) {
+  border-left-color: #ffcb00;
+}
+
+.goal-card:has(.goal-status.overdue) {
+  border-left-color: #e2445c;
+}
+
+.goal-status {
+  border-radius: 999px;
+  background: #f0f3ff;
+  color: #323338;
+  font-weight: 800;
+}
+
+.goal-status.approved {
+  background: #00c875;
+  color: #ffffff;
+}
+
+.goal-status.pending {
+  background: #ffcb00;
+  color: #323338;
+}
+
+.goal-status.in-progress {
+  background: #0073ea;
+  color: #ffffff;
+}
+
+.goal-status.overdue {
+  background: #e2445c;
+  color: #ffffff;
+}
+
+.progress-bar,
+.mini-progress-bar,
+.sidebar-progress-bar,
+.youth-level-progress-bar {
+  background: #e6e9f2;
+}
+
+.progress-fill,
+.mini-progress-fill,
+.sidebar-progress-fill,
+.youth-level-progress-fill {
+  background: linear-gradient(90deg, #0073ea, #00c875);
+}
+
+.sidebar-progress-level.is-complete .sidebar-progress-fill {
+  background: linear-gradient(90deg, #00c875, #00a86b);
+}
+
+.subgoal-row {
+  background: #ffffff;
+  border-color: #d0d4e4;
+}
+
+.subgoal-row.completed {
+  background: #e5f9f1;
+  border-color: rgba(0, 200, 117, 0.35);
+}
+
+.checklist-label.completed {
+  color: #00a86b;
+}
+
+.leaderboard-rank {
+  background: #0073ea;
+  color: #ffffff;
+}
+
+.leaderboard-row.is-current {
+  background: #eef6ff;
+  border-color: #0073ea;
+}
+
+.shared-goal-tags span {
+  background: #f2e9ff;
+  border-color: rgba(162, 93, 220, 0.28);
+  color: #7d42b8;
+}
+
+.youth-level-progress,
+.managed-youth-card,
+.youth-goal-progress-row,
+.template-card,
+.draft-checklist-item,
+.editable-subgoal-row {
+  background: #ffffff;
+  border-color: #d0d4e4;
+}
