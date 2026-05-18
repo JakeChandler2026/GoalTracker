@@ -20,7 +20,7 @@
     return Math.floor(parsed);
   }
 
-  function mergeSnapshotProgressData(relationalState, snapshotState) {
+function mergeSnapshotProgressData(relationalState, snapshotState) {
     const nextState = clone(relationalState);
     const snapshotGoalsById = new Map((snapshotState?.goals || []).map((goal) => [goal.id, goal]));
     const snapshotTemplatesById = new Map((snapshotState?.templates || []).map((template) => [template.id, template]));
@@ -31,6 +31,10 @@
         ...goal,
         points: normalizePointValue(snapshotGoal?.points ?? goal.points),
         priorityOrder: Number(snapshotGoal?.priorityOrder ?? goal.priorityOrder ?? 0),
+        sourceTemplateId: snapshotGoal?.sourceTemplateId ?? goal.sourceTemplateId ?? null,
+        sourceGoalId: snapshotGoal?.sourceGoalId ?? goal.sourceGoalId ?? null,
+        requiredGoalDefinitionId: snapshotGoal?.requiredGoalDefinitionId ?? goal.requiredGoalDefinitionId ?? null,
+        requiredGoalLevel: snapshotGoal?.requiredGoalLevel ?? goal.requiredGoalLevel ?? null,
         goalApproved: Boolean(snapshotGoal?.goalApproved ?? goal.goalApproved),
         goalApprovedBy: snapshotGoal?.goalApprovedBy ?? goal.goalApprovedBy ?? null,
         goalApprovedAt: snapshotGoal?.goalApprovedAt ?? goal.goalApprovedAt ?? null,
@@ -47,6 +51,9 @@
         points: normalizePointValue(snapshotTemplate?.points ?? template.points)
       };
     });
+
+    nextState.requiredLevelGoals = snapshotState?.requiredLevelGoals || nextState.requiredLevelGoals || [];
+    nextState.notifications = snapshotState?.notifications || nextState.notifications || [];
 
     return nextState;
   }
@@ -150,6 +157,17 @@
   function buildTemplateSubGoals(templateItems, templateId) {
     return templateItems
       .filter((item) => item.template_id === templateId)
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        repeatCount: item.repeat_count
+      }));
+  }
+
+  function buildRequiredGoalSubGoals(requiredItems, requiredGoalId) {
+    return requiredItems
+      .filter((item) => item.required_goal_id === requiredGoalId)
       .sort((left, right) => left.sort_order - right.sort_order)
       .map((item) => ({
         id: item.id,
@@ -286,6 +304,40 @@
     }
   }
 
+  async function upsertRequiredGoalChecklist(client, requiredGoalId, subGoals) {
+    const existingItemsResult = await client
+      .from("required_level_goal_checklist_items")
+      .select("id")
+      .eq("required_goal_id", requiredGoalId);
+    if (existingItemsResult.error) {
+      throw existingItemsResult.error;
+    }
+
+    const existingItems = existingItemsResult.data || [];
+    const keepIds = subGoals.map((subGoal) => subGoal.id).filter(Boolean);
+    const deleteIds = existingItems.map((item) => item.id).filter((id) => !keepIds.includes(id));
+    if (deleteIds.length) {
+      const deleteResult = await client.from("required_level_goal_checklist_items").delete().in("id", deleteIds);
+      if (deleteResult.error) {
+        throw deleteResult.error;
+      }
+    }
+
+    for (let index = 0; index < subGoals.length; index += 1) {
+      const subGoal = subGoals[index];
+      const result = await client.from("required_level_goal_checklist_items").upsert({
+        id: subGoal.id,
+        required_goal_id: requiredGoalId,
+        title: subGoal.title,
+        repeat_count: subGoal.repeatCount,
+        sort_order: index
+      });
+      if (result.error) {
+        throw result.error;
+      }
+    }
+  }
+
   async function findProfileIdByName(client, fullName) {
     if (!fullName) {
       return null;
@@ -338,6 +390,26 @@
         nextState.templates[templateIndex] = payload.template;
       }
       return nextState;
+    },
+    async createRequiredLevelGoal(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      nextState.requiredLevelGoals = [payload.requiredGoal, ...(nextState.requiredLevelGoals || [])];
+      return nextState;
+    },
+    async updateRequiredLevelGoal(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      nextState.requiredLevelGoals = (nextState.requiredLevelGoals || []).map((goal) =>
+        goal.id === payload.requiredGoal.id ? payload.requiredGoal : goal
+      );
+      return nextState;
+    },
+    async deleteRequiredLevelGoal(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      nextState.requiredLevelGoals = (nextState.requiredLevelGoals || []).filter((goal) => goal.id !== payload.requiredGoalId);
+      return nextState;
+    },
+    async dispatchNotifications(storageKey, appState, payload) {
+      return { ok: true, dispatched: 0, queued: payload.notifications?.length || 0 };
     },
     async createYouthAccount(storageKey, appState, payload) {
       const nextState = clone(appState);
@@ -484,7 +556,9 @@
           goalChecklistUnitsResult,
           parentYouthLinksResult,
           templatesResult,
-          templateChecklistItemsResult
+          templateChecklistItemsResult,
+          requiredGoalsResult,
+          requiredGoalChecklistItemsResult
         ] = await Promise.all([
           client.from("stakes").select("id, name"),
           client.from("wards").select("id, name, stake_id"),
@@ -494,7 +568,9 @@
           client.from("goal_checklist_units").select("checklist_item_id, unit_index, completed_at"),
           client.from("parent_youth_links").select("parent_id, youth_id, relationship"),
           client.from("goal_templates").select("*"),
-          client.from("template_checklist_items").select("id, template_id, title, repeat_count, sort_order")
+          client.from("template_checklist_items").select("id, template_id, title, repeat_count, sort_order"),
+          client.from("required_level_goals").select("id, ward_id, level, title, summary, points, deadline_days, created_by"),
+          client.from("required_level_goal_checklist_items").select("id, required_goal_id, title, repeat_count, sort_order")
         ]);
 
         const firstError = [
@@ -506,7 +582,9 @@
           goalChecklistUnitsResult.error,
           parentYouthLinksResult.error,
           templatesResult.error,
-          templateChecklistItemsResult.error
+          templateChecklistItemsResult.error,
+          requiredGoalsResult.error,
+          requiredGoalChecklistItemsResult.error
         ].find(Boolean);
 
         if (firstError) {
@@ -522,6 +600,8 @@
         const parentYouthLinks = parentYouthLinksResult.data || [];
         const templates = templatesResult.data || [];
         const templateChecklistItems = templateChecklistItemsResult.data || [];
+        const requiredGoals = requiredGoalsResult.data || [];
+        const requiredGoalChecklistItems = requiredGoalChecklistItemsResult.data || [];
 
         const wardNamesById = new Map(wards.map((ward) => [ward.id, ward.name]));
         const stakesById = new Map(stakes.map((stake) => [stake.id, stake]));
@@ -562,6 +642,10 @@
             summary: goal.summary,
             points: normalizePointValue(goal.points),
             priorityOrder: Number(goal.priority_order || 0),
+            sourceTemplateId: goal.source_template_id || null,
+            sourceGoalId: goal.source_goal_id || null,
+            requiredGoalDefinitionId: goal.required_goal_definition_id || null,
+            requiredGoalLevel: goal.required_goal_level || null,
             goalApproved: Boolean(goal.goal_approved),
             goalApprovedBy: goal.goal_approved_by ? (profileNamesById.get(goal.goal_approved_by) || null) : null,
             goalApprovedAt: goal.goal_approved_at ? String(goal.goal_approved_at).slice(0, 10) : null,
@@ -583,6 +667,17 @@
             youthId: link.youth_id,
             relationship: link.relationship || "Parent"
           })),
+          requiredLevelGoals: requiredGoals.map((goal) => ({
+            id: goal.id,
+            ward: wardNamesById.get(goal.ward_id) || "",
+            level: Number(goal.level || 1),
+            title: goal.title,
+            summary: goal.summary,
+            points: normalizePointValue(goal.points),
+            deadlineDays: Number(goal.deadline_days || 30),
+            subGoals: buildRequiredGoalSubGoals(requiredGoalChecklistItems, goal.id)
+          })),
+          notifications: [],
           session: null
         };
         const snapshotState = await supabaseSnapshotProvider.loadAppState(storageKey, fallbackState);
@@ -603,12 +698,16 @@
           id: payload.goal.id,
           youth_id: payload.goal.userId,
           created_by: payload.createdBy,
-          source_template_id: payload.sourceTemplateId || null,
-          source_goal_id: payload.sourceGoalId || null,
+          source_template_id: payload.sourceTemplateId || payload.goal.sourceTemplateId || null,
+          source_goal_id: payload.sourceGoalId || payload.goal.sourceGoalId || null,
+          required_goal_definition_id: payload.goal.requiredGoalDefinitionId || null,
+          required_goal_level: payload.goal.requiredGoalLevel || null,
           title: payload.goal.title,
           summary: payload.goal.summary,
           points: normalizePointValue(payload.goal.points),
           priority_order: Number(payload.goal.priorityOrder || 0),
+          required_goal_definition_id: payload.goal.requiredGoalDefinitionId || null,
+          required_goal_level: payload.goal.requiredGoalLevel || null,
           goal_approved: Boolean(payload.goal.goalApproved),
           goal_approved_by: goalApproverId,
           goal_approved_at: payload.goal.goalApprovedAt ? `${payload.goal.goalApprovedAt}T00:00:00.000Z` : null,
@@ -706,6 +805,85 @@
         await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
         return nextState;
       }
+    },
+    async createRequiredLevelGoal(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const wardResult = await client.from("profiles").select("ward_id").eq("id", payload.createdBy).maybeSingle();
+        const wardId = wardResult.data?.ward_id || null;
+        const result = await client.from("required_level_goals").insert({
+          id: payload.requiredGoal.id,
+          ward_id: wardId,
+          level: payload.requiredGoal.level,
+          title: payload.requiredGoal.title,
+          summary: payload.requiredGoal.summary,
+          points: normalizePointValue(payload.requiredGoal.points),
+          deadline_days: payload.requiredGoal.deadlineDays,
+          created_by: payload.createdBy
+        });
+        if (result.error) {
+          throw result.error;
+        }
+        await upsertRequiredGoalChecklist(client, payload.requiredGoal.id, payload.requiredGoal.subGoals);
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase createRequiredLevelGoal failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.createRequiredLevelGoal(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
+    },
+    async updateRequiredLevelGoal(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const result = await client.from("required_level_goals").update({
+          level: payload.requiredGoal.level,
+          title: payload.requiredGoal.title,
+          summary: payload.requiredGoal.summary,
+          points: normalizePointValue(payload.requiredGoal.points),
+          deadline_days: payload.requiredGoal.deadlineDays
+        }).eq("id", payload.requiredGoal.id);
+        if (result.error) {
+          throw result.error;
+        }
+        await upsertRequiredGoalChecklist(client, payload.requiredGoal.id, payload.requiredGoal.subGoals);
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase updateRequiredLevelGoal failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.updateRequiredLevelGoal(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
+    },
+    async deleteRequiredLevelGoal(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const result = await client.from("required_level_goals").delete().eq("id", payload.requiredGoalId);
+        if (result.error) {
+          throw result.error;
+        }
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase deleteRequiredLevelGoal failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.deleteRequiredLevelGoal(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
+    },
+    async dispatchNotifications(storageKey, appState, payload) {
+      if (!runtime.canBootSupabase) {
+        return localStorageProvider.dispatchNotifications(storageKey, appState, payload);
+      }
+      const client = createSupabaseClient();
+      const result = await client.functions.invoke("send-notifications", {
+        body: {
+          notifications: payload.notifications || []
+        }
+      });
+      if (result.error) {
+        throw result.error;
+      }
+      return result.data || { ok: true };
     },
     async createYouthAccount(storageKey, appState, payload) {
       const client = createSupabaseClient();
@@ -831,6 +1009,15 @@
     async updateTemplate(storageKey, appState, payload) {
       return (activeProvider.updateTemplate || localStorageProvider.updateTemplate)(storageKey, appState, payload);
     },
+    async createRequiredLevelGoal(storageKey, appState, payload) {
+      return (activeProvider.createRequiredLevelGoal || localStorageProvider.createRequiredLevelGoal)(storageKey, appState, payload);
+    },
+    async updateRequiredLevelGoal(storageKey, appState, payload) {
+      return (activeProvider.updateRequiredLevelGoal || localStorageProvider.updateRequiredLevelGoal)(storageKey, appState, payload);
+    },
+    async deleteRequiredLevelGoal(storageKey, appState, payload) {
+      return (activeProvider.deleteRequiredLevelGoal || localStorageProvider.deleteRequiredLevelGoal)(storageKey, appState, payload);
+    },
     async createYouthAccount(storageKey, appState, payload) {
       return (activeProvider.createYouthAccount || localStorageProvider.createYouthAccount)(storageKey, appState, payload);
     },
@@ -857,6 +1044,9 @@
     },
     async assignBishopWard(storageKey, appState, payload) {
       return (activeProvider.assignBishopWard || localStorageProvider.assignBishopWard)(storageKey, appState, payload);
+    },
+    async dispatchNotifications(storageKey, appState, payload) {
+      return (activeProvider.dispatchNotifications || localStorageProvider.dispatchNotifications)(storageKey, appState, payload);
     }
   };
 })(window);

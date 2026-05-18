@@ -31,10 +31,37 @@
     return insertResult.data;
   }
 
-  async function ensureWardRecord(client, wardName) {
-    const existingWard = await client.from("wards").select("id, name").eq("name", wardName).maybeSingle();
-    if (existingWard.data?.id) {
-      return existingWard.data;
+  function normalizeWardName(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/\bward\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  async function ensureWardRecord(client, wardName, wardId = "") {
+    if (wardId) {
+      const wardById = await client.from("wards").select("id, name, stake_id").eq("id", wardId).maybeSingle();
+      if (wardById.error) {
+        throw wardById.error;
+      }
+      if (wardById.data?.id) {
+        return wardById.data;
+      }
+    }
+
+    const normalizedRequestedWard = normalizeWardName(wardName);
+    const wardsResult = await client.from("wards").select("id, name, stake_id");
+    if (wardsResult.error) {
+      throw wardsResult.error;
+    }
+
+    const existingWard = (wardsResult.data || []).find((ward) =>
+      normalizeWardName(ward.name) === normalizedRequestedWard
+    );
+    if (existingWard?.id) {
+      return existingWard;
     }
 
     const stake = await ensureDefaultStakeRecord(client);
@@ -46,10 +73,25 @@
     return insertResult.data;
   }
 
+  function mapProfileRow(row) {
+    return {
+      id: row.id,
+      authUserId: row.auth_user_id || null,
+      email: row.email,
+      name: row.full_name,
+      role: row.role,
+      organization: row.role === "bishop" || row.role === "parent" || row.role === "administrator" ? "all" : row.organization,
+      competitionOptIn: row.role === "youth" ? row.competition_opt_in !== false : false,
+      approvalStatus: row.approval_status,
+      wardId: row.ward_id || "",
+      ward: row.ward?.name || row.ward_name || ""
+    };
+  }
+
   async function fetchProfileByEmail(client, email) {
     const result = await client
       .from("profiles")
-      .select("id, auth_user_id, email, full_name, role, organization, approval_status, competition_opt_in, ward:wards(name)")
+      .select("id, auth_user_id, email, full_name, role, organization, approval_status, competition_opt_in, ward_id, ward:wards(name)")
       .eq("email", email)
       .maybeSingle();
 
@@ -61,17 +103,7 @@
       return null;
     }
 
-    return {
-      id: result.data.id,
-      authUserId: result.data.auth_user_id || null,
-      email: result.data.email,
-      name: result.data.full_name,
-      role: result.data.role,
-      organization: result.data.role === "bishop" || result.data.role === "parent" || result.data.role === "administrator" ? "all" : result.data.organization,
-      competitionOptIn: result.data.role === "youth" ? result.data.competition_opt_in !== false : false,
-      approvalStatus: result.data.approval_status,
-      ward: result.data.ward?.name || ""
-    };
+    return mapProfileRow(result.data);
   }
 
   function getApprovalStatusForRole(role) {
@@ -87,28 +119,20 @@
     const existingProfile = await fetchProfileByEmail(client, email);
     if (existingProfile) {
       if (!existingProfile.authUserId || existingProfile.authUserId !== authUser.id) {
-        const linkResult = await client
-          .from("profiles")
-          .update({ auth_user_id: authUser.id, email })
-          .eq("id", existingProfile.id)
-          .select("id, auth_user_id, email, full_name, role, organization, approval_status, competition_opt_in, ward:wards(name)")
-          .single();
+        const profileResult = await client.rpc("create_self_signup_profile", {
+          requested_role: existingProfile.role,
+          requested_full_name: existingProfile.name,
+          requested_ward_id: existingProfile.wardId || null,
+          requested_organization: existingProfile.organization,
+          requested_competition_opt_in: existingProfile.competitionOptIn
+        });
 
-        if (linkResult.error) {
-          throw linkResult.error;
+        if (profileResult.error) {
+          throw profileResult.error;
         }
 
-        return {
-          id: linkResult.data.id,
-          authUserId: linkResult.data.auth_user_id || null,
-          email: linkResult.data.email,
-          name: linkResult.data.full_name,
-          role: linkResult.data.role,
-          organization: linkResult.data.role === "bishop" || linkResult.data.role === "parent" || linkResult.data.role === "administrator" ? "all" : linkResult.data.organization,
-          competitionOptIn: linkResult.data.role === "youth" ? linkResult.data.competition_opt_in !== false : false,
-          approvalStatus: linkResult.data.approval_status,
-          ward: linkResult.data.ward?.name || ""
-        };
+        const profile = Array.isArray(profileResult.data) ? profileResult.data[0] : profileResult.data;
+        return profile ? mapProfileRow(profile) : existingProfile;
       }
 
       return existingProfile;
@@ -117,6 +141,7 @@
     const metadata = authUser.user_metadata || {};
     const role = metadata.role;
     const ward = String(metadata.ward || "").trim();
+    const wardId = String(metadata.ward_id || metadata.wardId || "").trim();
     const fullName = String(metadata.full_name || metadata.fullName || "").trim();
     const organization = role === "bishop" || role === "parent" || role === "administrator" ? "all" : metadata.organization;
     const competitionOptIn = role === "youth" ? metadata.competition_opt_in !== false && metadata.competitionOptIn !== false : false;
@@ -125,33 +150,21 @@
       return null;
     }
 
-    const wardRecord = await ensureWardRecord(client, ward);
-    const profileInsert = await client.from("profiles").upsert({
-      id: authUser.id,
-      auth_user_id: authUser.id,
-      email,
-      full_name: fullName,
-      role,
-      ward_id: wardRecord.id,
-      organization: role === "bishop" || role === "parent" || role === "administrator" ? "all" : organization,
-      approval_status: getApprovalStatusForRole(role),
-      competition_opt_in: competitionOptIn
-    }).select("id, email, full_name, role, organization, approval_status, competition_opt_in, ward:wards(name)").single();
+    const wardRecord = await ensureWardRecord(client, ward, wardId);
+    const profileResult = await client.rpc("create_self_signup_profile", {
+      requested_role: role,
+      requested_full_name: fullName,
+      requested_ward_id: wardRecord.id,
+      requested_organization: role === "bishop" || role === "parent" || role === "administrator" ? "all" : organization,
+      requested_competition_opt_in: competitionOptIn
+    });
 
-    if (profileInsert.error) {
-      throw profileInsert.error;
+    if (profileResult.error) {
+      throw profileResult.error;
     }
 
-    return {
-      id: profileInsert.data.id,
-      email: profileInsert.data.email,
-      name: profileInsert.data.full_name,
-      role: profileInsert.data.role,
-      organization: profileInsert.data.role === "bishop" || profileInsert.data.role === "parent" || profileInsert.data.role === "administrator" ? "all" : profileInsert.data.organization,
-      competitionOptIn: profileInsert.data.role === "youth" ? profileInsert.data.competition_opt_in !== false : false,
-      approvalStatus: profileInsert.data.approval_status,
-      ward: profileInsert.data.ward?.name || ward
-    };
+    const profile = Array.isArray(profileResult.data) ? profileResult.data[0] : profileResult.data;
+    return profile ? mapProfileRow(profile) : null;
   }
 
   function findUserByCredentials(appState, role, email, password) {
@@ -172,6 +185,14 @@
     }
 
     return null;
+  }
+
+  function isEmailRateLimitError(error) {
+    return /email rate limit|rate limit exceeded|too many requests/i.test(String(error?.message || error || ""));
+  }
+
+  function getEmailRateLimitMessage() {
+    return "The email service is temporarily rate limited. Please wait a few minutes before creating another account, or have an administrator create the account from the dashboard. For production, configure a custom SMTP provider in Supabase Auth to raise this limit.";
   }
 
   const demoAuthProvider = {
@@ -307,7 +328,7 @@
         }
       };
     },
-    async signUp({ appState, role, name, email, ward, organization, password, competitionOptIn }) {
+    async signUp({ appState, role, name, email, ward, wardId, organization, password, competitionOptIn }) {
       if (!runtime.canBootSupabase) {
         return {
           ok: false,
@@ -328,6 +349,8 @@
           data: {
             role,
             ward,
+            ward_id: wardId || null,
+            wardId: wardId || null,
             organization,
             competition_opt_in: role === "youth" ? competitionOptIn !== false : false,
             competitionOptIn: role === "youth" ? competitionOptIn !== false : false,
@@ -337,6 +360,9 @@
       });
 
       if (error) {
+        if (isEmailRateLimitError(error)) {
+          return { ok: false, error: getEmailRateLimitMessage() };
+        }
         return { ok: false, error: error.message || "Supabase sign-up failed." };
       }
 

@@ -63,6 +63,37 @@ const storageAdapter = window.BishopGoalTrackerStorage || {
 const isSupabaseRuntime = backendRuntime.runtimeMode === "supabase";
 const BOOTSTRAP_TIMEOUT_MS = 8000;
 const LEVEL_POINT_REQUIREMENTS = [100, 100, 100];
+const LEADERBOARD_PERIODS = {
+  all: {
+    label: "All Time",
+    summary: "All approved goals"
+  },
+  week: {
+    label: "This Week",
+    summary: "Goals approved this week"
+  },
+  month: {
+    label: "This Month",
+    summary: "Goals approved this month"
+  }
+};
+const BOOK_OF_MORMON_BOOKS = [
+  ["1 Nephi", 22],
+  ["2 Nephi", 33],
+  ["Jacob", 7],
+  ["Enos", 1],
+  ["Jarom", 1],
+  ["Omni", 1],
+  ["Words of Mormon", 1],
+  ["Mosiah", 29],
+  ["Alma", 63],
+  ["Helaman", 16],
+  ["3 Nephi", 30],
+  ["4 Nephi", 1],
+  ["Mormon", 9],
+  ["Ether", 15],
+  ["Moroni", 10]
+];
 const AWARD_NAMES_BY_ORGANIZATION = {
   young_men: [
     "Iron Rod Award",
@@ -76,6 +107,16 @@ const AWARD_NAMES_BY_ORGANIZATION = {
   ]
 };
 
+function createBookOfMormonChapterChecklist(idPrefix) {
+  return BOOK_OF_MORMON_BOOKS.flatMap(([bookName, chapterCount]) =>
+    Array.from({ length: chapterCount }, (_, index) => ({
+      id: `${idPrefix}-${bookName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${index + 1}`,
+      title: `${bookName} ${index + 1}`,
+      repeatCount: 1
+    }))
+  );
+}
+
 const firstRunState = {
   stakes: [
     { id: "s1", name: "Pocatello Idaho Stake" }
@@ -86,14 +127,16 @@ const firstRunState = {
   ],
   users: [
     { id: "a1", role: "administrator", email: "admin@example.com", password: "admin123", name: "Stake Administrator", ward: "All Wards", organization: "all", approvalStatus: "verified" },
-    { id: "u1", role: "youth", email: "josh@example.com", password: "goal123", name: "Josh Carter", ward: "Mapleton 1st Ward", organization: "young_men" },
+    { id: "u1", role: "youth", email: "josh@example.com", password: "goal123", name: "Josh Carter", ward: "Mapleton 1st Ward", organization: "young_men", sameGoalNotificationsOptIn: true, notificationChannels: { inApp: true, email: true, push: false } },
     { id: "u2", role: "youth", email: "maria@example.com", password: "growth456", name: "Maria Lopez", ward: "Mapleton 1st Ward", organization: "young_women" },
+    { id: "u5", role: "youth", email: "noah.kim@example.com", password: "sample123", name: "Noah Kim", ward: "Mapleton 1st Ward", organization: "young_men" },
+    { id: "u6", role: "youth", email: "ava.price@example.com", password: "sample456", name: "Ava Price", ward: "Mapleton 1st Ward", organization: "young_women" },
     { id: "u3", role: "youth", email: "eli.roberts@example.com", password: "pocatello1", name: "Eli Roberts", ward: "Pocatello Creek Ward", organization: "young_men" },
     { id: "u4", role: "youth", email: "sophie.martin@example.com", password: "pocatello2", name: "Sophie Martin", ward: "Pocatello Creek Ward", organization: "young_women" },
     { id: "p1", role: "parent", email: "parent.carter@example.com", password: "parent123", name: "Taylor Carter", ward: "Mapleton 1st Ward", organization: "all", approvalStatus: "verified", loginStatus: "verified" },
-    { id: "l1", role: "youth_leader", email: "leader.one@example.com", password: "approve789", name: "Brother Jensen", ward: "Mapleton 1st Ward", organization: "young_men", approvalStatus: "approved" },
-    { id: "l2", role: "youth_leader", email: "leader.two@example.com", password: "hearts456", name: "Sister Lopez", ward: "Mapleton 1st Ward", organization: "young_women", approvalStatus: "approved" },
-    { id: "b1", role: "bishop", email: "ward.bishop@example.com", password: "steward123", name: "Bishop Reynolds", ward: "Mapleton 1st Ward", approvalStatus: "verified" },
+    { id: "l1", role: "youth_leader", email: "leader.one@example.com", password: "approve789", name: "Brother Jensen", ward: "Mapleton 1st Ward", organization: "young_men", approvalStatus: "approved", weeklySummaryEmailOptIn: true },
+    { id: "l2", role: "youth_leader", email: "leader.two@example.com", password: "hearts456", name: "Sister Lopez", ward: "Mapleton 1st Ward", organization: "young_women", approvalStatus: "approved", weeklySummaryEmailOptIn: true },
+    { id: "b1", role: "bishop", email: "ward.bishop@example.com", password: "steward123", name: "Bishop Reynolds", ward: "Mapleton 1st Ward", approvalStatus: "verified", weeklySummaryEmailOptIn: true },
     { id: "b2", role: "bishop", email: "pocatello.bishop@example.com", password: "steward456", name: "Jacob Chandler", ward: "Pocatello Creek Ward", approvalStatus: "verified" }
   ],
   goals: [
@@ -220,6 +263,98 @@ const firstRunState = {
         { id: "sg16", title: "Draft the activity idea", repeatCount: 1, completedUnits: ["2026-04-13"] },
         { id: "sg17", title: "Coordinate the final plan", repeatCount: 1, completedUnits: [null] }
       ]
+    },
+    {
+      id: "g8",
+      userId: "u1",
+      title: "Read the Book of Mormon",
+      summary: "Track chapter reading progress for the year.",
+      points: 70,
+      priorityOrder: 300,
+      goalApproved: true,
+      goalApprovedBy: "Bishop Reynolds",
+      goalApprovedAt: "2026-05-01",
+      deadline: "2027-05-01",
+      leaderApproved: true,
+      leaderApprovedBy: "Brother Jensen",
+      completedAt: "2026-05-18",
+      sourceTemplateId: "t-bom-sample",
+      subGoals: [
+        { id: "sg18", title: "Read 1 Nephi", repeatCount: 5, completedUnits: ["2026-05-18", "2026-05-18", "2026-05-18", null, null] }
+      ]
+    },
+    {
+      id: "g9",
+      userId: "u2",
+      title: "Read the Book of Mormon",
+      summary: "Track chapter reading progress for the year.",
+      points: 90,
+      priorityOrder: 300,
+      goalApproved: true,
+      goalApprovedBy: "Bishop Reynolds",
+      goalApprovedAt: "2026-05-01",
+      deadline: "2027-05-01",
+      leaderApproved: true,
+      leaderApprovedBy: "Sister Lopez",
+      completedAt: "2026-05-18",
+      sourceTemplateId: "t-bom-sample",
+      subGoals: [
+        { id: "sg19", title: "Read 1 Nephi", repeatCount: 5, completedUnits: ["2026-05-18", "2026-05-18", "2026-05-18", "2026-05-18", "2026-05-18"] }
+      ]
+    },
+    {
+      id: "g10",
+      userId: "u1",
+      title: "Ministering Visit",
+      summary: "Complete a ministering visit and report back.",
+      points: 80,
+      priorityOrder: 400,
+      goalApproved: true,
+      goalApprovedBy: "Bishop Reynolds",
+      goalApprovedAt: "2026-05-01",
+      deadline: "2026-06-01",
+      leaderApproved: true,
+      leaderApprovedBy: "Brother Jensen",
+      completedAt: "2026-05-02",
+      subGoals: [
+        { id: "sg20", title: "Visit completed", repeatCount: 1, completedUnits: ["2026-05-02"] }
+      ]
+    },
+    {
+      id: "g11",
+      userId: "u5",
+      title: "Quorum Service Sprint",
+      summary: "Finish a focused week of service.",
+      points: 55,
+      priorityOrder: 100,
+      goalApproved: true,
+      goalApprovedBy: "Bishop Reynolds",
+      goalApprovedAt: "2026-05-05",
+      deadline: "2026-05-31",
+      leaderApproved: true,
+      leaderApprovedBy: "Brother Jensen",
+      completedAt: "2026-05-18",
+      subGoals: [
+        { id: "sg21", title: "Service sprint complete", repeatCount: 1, completedUnits: ["2026-05-18"] }
+      ]
+    },
+    {
+      id: "g12",
+      userId: "u6",
+      title: "Class Fellowship Challenge",
+      summary: "Invite and include someone new this month.",
+      points: 45,
+      priorityOrder: 100,
+      goalApproved: true,
+      goalApprovedBy: "Bishop Reynolds",
+      goalApprovedAt: "2026-05-03",
+      deadline: "2026-05-31",
+      leaderApproved: true,
+      leaderApprovedBy: "Sister Lopez",
+      completedAt: "2026-05-03",
+      subGoals: [
+        { id: "sg22", title: "Fellowship challenge complete", repeatCount: 1, completedUnits: ["2026-05-03"] }
+      ]
     }
   ],
   templates: [
@@ -234,9 +369,32 @@ const firstRunState = {
       ]
     }
   ],
+  requiredLevelGoals: [
+    {
+      id: "required-bom-level1-mapleton",
+      ward: "Mapleton 1st Ward",
+      level: 1,
+      title: "Read the Book of Mormon",
+      summary: "Read the Book of Mormon in its entirety in less than one year.",
+      points: 0,
+      deadlineDays: 365,
+      subGoals: createBookOfMormonChapterChecklist("required-bom-level1-mapleton")
+    },
+    {
+      id: "required-bom-level1-pocatello-creek",
+      ward: "Pocatello Creek Ward",
+      level: 1,
+      title: "Read the Book of Mormon",
+      summary: "Read the Book of Mormon in its entirety in less than one year.",
+      points: 0,
+      deadlineDays: 365,
+      subGoals: createBookOfMormonChapterChecklist("required-bom-level1-pocatello-creek")
+    }
+  ],
   parentYouthLinks: [
     { parentId: "p1", youthId: "u1", relationship: "Parent" }
   ],
+  notifications: [],
   session: null
 };
 
@@ -251,6 +409,7 @@ const elements = {
   userAuthModes: document.getElementById("userAuthModes"),
   loginForm: document.getElementById("loginForm"),
   registerForm: document.getElementById("registerForm"),
+  registerWard: document.getElementById("registerWard"),
   registerOrganizationField: document.getElementById("registerOrganizationField"),
   registerCompetitionField: document.getElementById("registerCompetitionField"),
   username: document.getElementById("username"),
@@ -280,7 +439,9 @@ const elements = {
 let activeRole = "youth";
 let activeUserAuthMode = "signin";
 let activeTemplateId = null;
+const NEW_TEMPLATE_ID = "__new_template__";
 let activeYouthDashboardView = "goals";
+let activeLeaderboardPeriod = "all";
 let activeAdminDashboardView = "overview";
 let activeGoalEditorId = null;
 let activeEditingYouthId = null;
@@ -298,7 +459,9 @@ function createEmptyState() {
     users: [],
     goals: [],
     templates: [],
+    requiredLevelGoals: [],
     parentYouthLinks: [],
+    notifications: [],
     session: null
   };
 }
@@ -330,6 +493,7 @@ function mergeDemoSeedState(loadedState) {
   mergeById("users");
   mergeById("goals");
   mergeById("templates");
+  mergeById("requiredLevelGoals");
   mergeById("stakes");
   mergeById("wards");
 
@@ -444,6 +608,13 @@ function normalizeState(rawState) {
     ward: String(user.ward || "").trim(),
     organization: user.role === "bishop" || user.role === "parent" || user.role === "administrator" ? "all" : (user.organization || (user.role === "youth" ? "young_men" : "young_men")),
     competitionOptIn: user.role === "youth" ? user.competitionOptIn !== false : false,
+    sameGoalNotificationsOptIn: user.role === "youth" ? Boolean(user.sameGoalNotificationsOptIn) : false,
+    weeklySummaryEmailOptIn: user.role === "bishop" || user.role === "youth_leader" ? user.weeklySummaryEmailOptIn !== false : false,
+    notificationChannels: {
+      inApp: user.notificationChannels?.inApp !== false,
+      email: Boolean(user.notificationChannels?.email),
+      push: Boolean(user.notificationChannels?.push)
+    },
     approvalStatus: user.approvalStatus || (user.role === "youth_leader" ? "approved" : "verified"),
     loginStatus: user.loginStatus || ((user.role === "youth" || user.role === "parent") && !user.email ? "not_invited" : "verified")
   }));
@@ -453,6 +624,27 @@ function normalizeState(rawState) {
     youthId: link.youthId,
     relationship: String(link.relationship || "Parent").trim() || "Parent"
   })).filter((link) => link.parentId && link.youthId);
+
+  nextState.notifications = (nextState.notifications || []).map((notification) => ({
+    id: notification.id || createId("notification"),
+    userId: notification.userId,
+    actorId: notification.actorId || null,
+    actorName: notification.actorName || "Another youth",
+    goalId: notification.goalId || null,
+    goalTitle: notification.goalTitle || "Shared goal",
+    type: notification.type || "same_goal_passed",
+    message: notification.message || "",
+    recipientEmail: notification.recipientEmail || "",
+    pushToken: notification.pushToken || "",
+    createdAt: normalizeDateString(notification.createdAt) || getTodayDateString(),
+    readAt: normalizeDateString(notification.readAt),
+    channels: {
+      inApp: notification.channels?.inApp !== false,
+      email: Boolean(notification.channels?.email),
+      push: Boolean(notification.channels?.push)
+    },
+    status: notification.status || "queued"
+  })).filter((notification) => notification.userId && notification.message);
 
   nextState.goals = nextState.goals.map((goal, index) => {
     const points = normalizePointValue(goal.points);
@@ -466,6 +658,10 @@ function normalizeState(rawState) {
       ...goal,
       points,
       priorityOrder: Number.isFinite(parsedPriority) ? parsedPriority : (index + 1) * 100,
+      sourceTemplateId: goal.sourceTemplateId || goal.source_template_id || null,
+      sourceGoalId: goal.sourceGoalId || goal.source_goal_id || null,
+      requiredGoalDefinitionId: goal.requiredGoalDefinitionId || null,
+      requiredGoalLevel: Number.isFinite(Number(goal.requiredGoalLevel)) ? Number(goal.requiredGoalLevel) : null,
       goalApproved: planApproved,
       goalApprovedBy: goal.goalApprovedBy || (planApproved ? goal.leaderApprovedBy || "Leader" : null),
       goalApprovedAt: goal.goalApprovedAt || (planApproved ? goal.completedAt || null : null),
@@ -498,6 +694,21 @@ function normalizeState(rawState) {
       repeatCount: parseRepeatCount(subGoal.repeatCount || 1)
     }))
   }));
+
+  nextState.requiredLevelGoals = (nextState.requiredLevelGoals || []).map((goal) => ({
+    id: goal.id || createId("required-goal"),
+    ward: String(goal.ward || "").trim(),
+    level: Math.max(1, Math.min(LEVEL_POINT_REQUIREMENTS.length, Number(goal.level || 1))),
+    title: String(goal.title || "").trim(),
+    summary: String(goal.summary || "").trim(),
+    points: normalizePointValue(goal.points),
+    deadlineDays: Number.isFinite(Number(goal.deadlineDays)) ? Math.max(1, Number(goal.deadlineDays)) : 30,
+    subGoals: (goal.subGoals || []).map((subGoal) => ({
+      id: subGoal.id || createId("required-subgoal"),
+      title: String(subGoal.title || "").trim(),
+      repeatCount: parseRepeatCount(subGoal.repeatCount || 1)
+    })).filter((subGoal) => subGoal.title)
+  })).filter((goal) => goal.ward && goal.title && goal.summary && goal.subGoals.length);
 
   stateUsersToWardNames(nextState).forEach((wardName) => {
     if (!nextState.wards.some((ward) => isSameWard(ward.name, wardName))) {
@@ -631,6 +842,54 @@ function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function normalizeDateString(value) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function getLeaderboardPeriodRange(period = activeLeaderboardPeriod, referenceDateString = getTodayDateString()) {
+  if (period === "all") {
+    return null;
+  }
+
+  const referenceDate = new Date(`${referenceDateString}T00:00:00`);
+  if (Number.isNaN(referenceDate.getTime())) {
+    return null;
+  }
+
+  if (period === "week") {
+    const startDate = new Date(referenceDate);
+    const daysSinceMonday = (startDate.getDay() + 6) % 7;
+    startDate.setDate(startDate.getDate() - daysSinceMonday);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 6);
+    return {
+      start: startDate.toISOString().slice(0, 10),
+      end: endDate.toISOString().slice(0, 10)
+    };
+  }
+
+  if (period === "month") {
+    const year = referenceDate.getFullYear();
+    const month = referenceDate.getMonth();
+    return {
+      start: new Date(year, month, 1).toISOString().slice(0, 10),
+      end: new Date(year, month + 1, 0).toISOString().slice(0, 10)
+    };
+  }
+
+  return null;
+}
+
+function isDateInsideRange(value, range) {
+  const dateString = normalizeDateString(value);
+  return Boolean(dateString && (!range || (dateString >= range.start && dateString <= range.end)));
+}
+
 function normalizePointValue(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -689,6 +948,63 @@ function normalizeCompletedUnits(subGoal) {
 
 function getCompletedCount(subGoal) {
   return (subGoal.completedUnits || []).filter(Boolean).length;
+}
+
+function getCompletedCountInRange(subGoal, periodRange = null) {
+  return (subGoal.completedUnits || []).filter((value) => isDateInsideRange(value, periodRange)).length;
+}
+
+function getGoalTotalCheckCount(goal) {
+  return (goal.subGoals || []).reduce((sum, subGoal) => sum + subGoal.repeatCount, 0);
+}
+
+function getGoalCompletedCheckCount(goal, period = "all") {
+  const periodRange = getLeaderboardPeriodRange(period);
+  return (goal.subGoals || []).reduce((sum, subGoal) => sum + getCompletedCountInRange(subGoal, periodRange), 0);
+}
+
+function getGoalCheckboxProgress(goal, period = "all") {
+  const totalChecks = getGoalTotalCheckCount(goal);
+  const completedChecks = getGoalCompletedCheckCount(goal, period);
+  return totalChecks ? Math.round((completedChecks / totalChecks) * 100) : 0;
+}
+
+function normalizeGoalMatchText(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getGoalMatchKey(goal) {
+  return goal.sourceTemplateId
+    ? `template:${goal.sourceTemplateId}`
+    : `title:${normalizeGoalMatchText(goal.title)}`;
+}
+
+function getSameGoalRowsForGoal(goal, currentYouthId, period = "all") {
+  const matchKey = getGoalMatchKey(goal);
+  return state.goals
+    .filter((candidate) => candidate.id !== goal.id && getGoalMatchKey(candidate) === matchKey)
+    .map((candidate) => {
+      const youth = state.users.find((user) => user.id === candidate.userId && user.role === "youth");
+      return youth ? {
+        youth,
+        goal: candidate,
+        completedChecks: getGoalCompletedCheckCount(candidate, period),
+        totalChecks: getGoalTotalCheckCount(candidate),
+        progressPercent: getGoalCheckboxProgress(candidate),
+        weeklyChecks: getGoalCompletedCheckCount(candidate, "week")
+      } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) =>
+      right.completedChecks - left.completedChecks ||
+      right.weeklyChecks - left.weeklyChecks ||
+      left.youth.name.localeCompare(right.youth.name)
+    )
+    .map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      isCurrentYouth: row.youth.id === currentYouthId
+    }));
 }
 
 function formatCompletedDate(value) {
@@ -843,6 +1159,8 @@ function buildGoalFromTemplate(template, userId, deadline = getDefaultGoalDeadli
     summary: template.summary,
     points: normalizePointValue(template.points),
     priorityOrder: getNextGoalPriority(userId),
+    sourceTemplateId: template.id,
+    sourceGoalId: null,
     goalApproved: Boolean(sessionUser && isWardAdmin(sessionUser)),
     goalApprovedBy: sessionUser && isWardAdmin(sessionUser) ? sessionUser.name : null,
     goalApprovedAt: sessionUser && isWardAdmin(sessionUser) ? getTodayDateString() : null,
@@ -859,6 +1177,107 @@ function buildGoalFromTemplate(template, userId, deadline = getDefaultGoalDeadli
   };
 }
 
+function getRequiredGoalsForWardLevel(ward, level) {
+  return (state.requiredLevelGoals || [])
+    .filter((goal) => isSameWard(goal.ward, ward) && Number(goal.level) === Number(level))
+    .sort((left, right) => left.title.localeCompare(right.title));
+}
+
+function buildGoalFromRequiredLevelGoal(requiredGoal, youth) {
+  const deadline = addDays(getTodayDateString(), Math.max(1, Number(requiredGoal.deadlineDays || 30)));
+  return {
+    id: createId("goal"),
+    userId: youth.id,
+    title: requiredGoal.title,
+    summary: requiredGoal.summary,
+    points: normalizePointValue(requiredGoal.points),
+    priorityOrder: getNextGoalPriority(youth.id),
+    sourceTemplateId: null,
+    sourceGoalId: null,
+    requiredGoalDefinitionId: requiredGoal.id,
+    requiredGoalLevel: Number(requiredGoal.level),
+    goalApproved: true,
+    goalApprovedBy: "Bishop Required Goal",
+    goalApprovedAt: getTodayDateString(),
+    deadline,
+    leaderApproved: false,
+    leaderApprovedBy: null,
+    completedAt: null,
+    subGoals: requiredGoal.subGoals.map((subGoal) => ({
+      id: createId("subgoal"),
+      title: subGoal.title,
+      repeatCount: subGoal.repeatCount,
+      completedUnits: Array.from({ length: subGoal.repeatCount }, () => null)
+    }))
+  };
+}
+
+function getMissingRequiredGoalsForYouthLevel(youth, level) {
+  const assignedDefinitionIds = new Set(state.goals
+    .filter((goal) => goal.userId === youth.id && Number(goal.requiredGoalLevel) === Number(level))
+    .map((goal) => goal.requiredGoalDefinitionId)
+    .filter(Boolean));
+  return getRequiredGoalsForWardLevel(youth.ward, level)
+    .filter((requiredGoal) => !assignedDefinitionIds.has(requiredGoal.id));
+}
+
+function getRequiredGoalCompletionForYouthLevel(youth, level) {
+  const requiredGoals = getRequiredGoalsForWardLevel(youth.ward, level);
+  if (!requiredGoals.length) {
+    return { requiredCount: 0, completedCount: 0, complete: true };
+  }
+
+  const completedCount = requiredGoals.filter((requiredGoal) =>
+    state.goals.some((goal) =>
+      goal.userId === youth.id &&
+      goal.requiredGoalDefinitionId === requiredGoal.id &&
+      goal.leaderApproved
+    )
+  ).length;
+
+  return {
+    requiredCount: requiredGoals.length,
+    completedCount,
+    complete: completedCount >= requiredGoals.length
+  };
+}
+
+function getYouthCompletedAttainmentLevels(youth) {
+  const earnedPoints = getYouthEarnedPoints(youth.id);
+  const milestones = getLevelPointMilestones();
+  return milestones.filter((level) =>
+    earnedPoints >= level.threshold &&
+    getRequiredGoalCompletionForYouthLevel(youth, level.index).complete
+  ).length;
+}
+
+async function assignMissingRequiredGoalsForYouth(youth, level, createdBy = null) {
+  const missingRequiredGoals = getMissingRequiredGoalsForYouthLevel(youth, level);
+  if (!missingRequiredGoals.length) {
+    return 0;
+  }
+
+  let assignedCount = 0;
+  for (const requiredGoal of missingRequiredGoals) {
+    const goal = buildGoalFromRequiredLevelGoal(requiredGoal, youth);
+    const nextState = await backendClient.createGoal(STORAGE_KEY, state, {
+      goal,
+      createdBy: createdBy || state.session?.userId || youth.id,
+      fallbackState: getFallbackState()
+    });
+    state = normalizeState(nextState);
+    assignedCount += 1;
+  }
+  saveState();
+  return assignedCount;
+}
+
+async function assignRequiredGoalsForCurrentAttainment(youth, createdBy = null) {
+  const completedLevels = getYouthCompletedAttainmentLevels(youth);
+  const nextLevel = Math.min(completedLevels + 1, LEVEL_POINT_REQUIREMENTS.length);
+  return assignMissingRequiredGoalsForYouth(youth, nextLevel, createdBy);
+}
+
 function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline && sourceGoal.deadline > getTodayDateString()) ? sourceGoal.deadline : getDefaultGoalDeadline()) {
   const sessionUser = getSessionUser();
   return {
@@ -868,6 +1287,8 @@ function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline &&
     summary: sourceGoal.summary,
     points: normalizePointValue(sourceGoal.points),
     priorityOrder: getNextGoalPriority(userId),
+    sourceTemplateId: sourceGoal.sourceTemplateId || null,
+    sourceGoalId: sourceGoal.id,
     goalApproved: Boolean(sessionUser && isWardAdmin(sessionUser)),
     goalApprovedBy: sessionUser && isWardAdmin(sessionUser) ? sessionUser.name : null,
     goalApprovedAt: sessionUser && isWardAdmin(sessionUser) ? getTodayDateString() : null,
@@ -1040,14 +1461,23 @@ function getGoalProgress(goal) {
   return totalChecks ? Math.round((completedChecks / totalChecks) * 100) : 0;
 }
 
-function getEarnedGoalPoints(goal) {
-  return goal.goalApproved && goal.leaderApproved ? normalizePointValue(goal.points) : 0;
+function getEarnedGoalPoints(goal, periodRange = null) {
+  if (!goal.goalApproved || !goal.leaderApproved) {
+    return 0;
+  }
+
+  if (periodRange && !isDateInsideRange(goal.completedAt, periodRange)) {
+    return 0;
+  }
+
+  return normalizePointValue(goal.points);
 }
 
-function getYouthEarnedPoints(userId) {
+function getYouthEarnedPoints(userId, period = "all") {
+  const periodRange = getLeaderboardPeriodRange(period);
   return state.goals
     .filter((goal) => goal.userId === userId)
-    .reduce((sum, goal) => sum + getEarnedGoalPoints(goal), 0);
+    .reduce((sum, goal) => sum + getEarnedGoalPoints(goal, periodRange), 0);
 }
 
 function getLevelPointMilestones() {
@@ -1066,15 +1496,18 @@ function getAwardNamesForYouth(sessionUser) {
   return AWARD_NAMES_BY_ORGANIZATION[sessionUser?.organization] || AWARD_NAMES_BY_ORGANIZATION.young_men;
 }
 
-function getYouthLevelProgress(youth) {
-  const earnedPoints = getYouthEarnedPoints(youth.id);
+function getYouthLevelProgress(youth, period = "all") {
+  const earnedPoints = getYouthEarnedPoints(youth.id, period);
   const milestones = getLevelPointMilestones();
   const awardNames = getAwardNamesForYouth(youth);
-  const completedLevels = milestones.filter((level) => earnedPoints >= level.threshold).length;
+  const completedLevels = period === "all"
+    ? getYouthCompletedAttainmentLevels(youth)
+    : milestones.filter((level) => earnedPoints >= level.threshold).length;
   const nextLevel = milestones[completedLevels] || null;
   const previousThreshold = completedLevels > 0 ? milestones[completedLevels - 1].threshold : 0;
   const pointsIntoNextLevel = nextLevel ? Math.max(0, earnedPoints - previousThreshold) : 0;
   const pointsNeededForNextLevel = nextLevel ? nextLevel.points : 0;
+  const requiredGoalProgress = nextLevel ? getRequiredGoalCompletionForYouthLevel(youth, nextLevel.index) : { requiredCount: 0, completedCount: 0, complete: true };
   const nextPercent = nextLevel
     ? Math.max(0, Math.min(100, Math.round((pointsIntoNextLevel / pointsNeededForNextLevel) * 100)))
     : 100;
@@ -1087,16 +1520,17 @@ function getYouthLevelProgress(youth) {
     pointsIntoNextLevel,
     pointsNeededForNextLevel,
     nextProgressLabel: nextLevel ? `${pointsIntoNextLevel}/${pointsNeededForNextLevel} pts` : `${earnedPoints} pts earned`,
+    requiredGoalProgress,
     nextPercent
   };
 }
 
-function buildYouthCompetitionRows(scopeYouth, currentYouthId) {
+function buildYouthCompetitionRows(scopeYouth, currentYouthId, period = activeLeaderboardPeriod) {
   const rows = scopeYouth
     .filter((youth) => youth.competitionOptIn !== false)
     .map((youth) => ({
       youth,
-      progress: getYouthLevelProgress(youth)
+      progress: getYouthLevelProgress(youth, period)
     }))
     .sort((left, right) =>
       right.progress.earnedPoints - left.progress.earnedPoints ||
@@ -1110,7 +1544,7 @@ function buildYouthCompetitionRows(scopeYouth, currentYouthId) {
   }));
 }
 
-function getYouthCompetitionData(sessionUser) {
+function getYouthCompetitionData(sessionUser, period = activeLeaderboardPeriod) {
   const wardYouth = state.users.filter((user) =>
     user.role === "youth" && isSameWard(user.ward, sessionUser.ward)
   );
@@ -1126,27 +1560,42 @@ function getYouthCompetitionData(sessionUser) {
       const matchingGoals = getOrderedYouthGoals(youth.id).filter((goal) =>
         currentGoalTitles.has(goal.title.trim().toLowerCase())
       );
-      return { youth, matchingGoals, progress: getYouthLevelProgress(youth) };
+      const bestGoalProgress = matchingGoals.reduce((best, goal) => {
+        const completedChecks = getGoalCompletedCheckCount(goal, period);
+        const weeklyChecks = getGoalCompletedCheckCount(goal, "week");
+        return completedChecks > best.completedChecks
+          ? {
+            completedChecks,
+            weeklyChecks,
+            totalChecks: getGoalTotalCheckCount(goal),
+            progressPercent: getGoalCheckboxProgress(goal),
+            goalTitle: goal.title
+          }
+          : best;
+      }, { completedChecks: 0, weeklyChecks: 0, totalChecks: 0, progressPercent: 0, goalTitle: "" });
+      return { youth, matchingGoals, progress: getYouthLevelProgress(youth), bestGoalProgress };
     })
     .filter((row) => row.matchingGoals.length)
     .sort((left, right) =>
+      right.bestGoalProgress.completedChecks - left.bestGoalProgress.completedChecks ||
       right.matchingGoals.length - left.matchingGoals.length ||
       right.progress.earnedPoints - left.progress.earnedPoints ||
       left.youth.name.localeCompare(right.youth.name)
     );
 
   return {
-    wardRows: buildYouthCompetitionRows(wardYouth, sessionUser.id),
-    stakeRows: buildYouthCompetitionRows(stakeYouth, sessionUser.id),
+    wardRows: buildYouthCompetitionRows(wardYouth, sessionUser.id, period),
+    stakeRows: buildYouthCompetitionRows(stakeYouth, sessionUser.id, period),
     sharedGoalRows
   };
 }
 
-function buildLeaderboardCard(title, subtitle, rows, sessionUser) {
+function buildLeaderboardCard(title, subtitle, rows, sessionUser, period = activeLeaderboardPeriod) {
   const currentRow = rows.find((row) => row.isCurrentYouth);
   const visibleRows = rows.slice(0, 10);
   const leaderPoints = rows[0]?.progress.earnedPoints || 0;
   const pointsBehindLeader = Math.max(0, leaderPoints - (currentRow?.progress.earnedPoints || 0));
+  const periodConfig = LEADERBOARD_PERIODS[period] || LEADERBOARD_PERIODS.all;
   const card = document.createElement("section");
   card.className = "form-card leaderboard-card";
   const currentSummary = sessionUser.competitionOptIn === false
@@ -1159,13 +1608,13 @@ function buildLeaderboardCard(title, subtitle, rows, sessionUser) {
       <div>
         <p class="eyebrow">${escapeHtml(subtitle)}</p>
         <h3>${escapeHtml(title)}</h3>
-        <p class="subgoal-meta">Top 10 competitive youth. ${escapeHtml(currentSummary)}</p>
+        <p class="subgoal-meta">Top 10 competitive youth. ${escapeHtml(periodConfig.summary)}. ${escapeHtml(currentSummary)}</p>
       </div>
-      <div class="session-badge">${escapeHtml(sessionUser.ward)}</div>
+      <div class="session-badge">${escapeHtml(periodConfig.label)}</div>
     </div>
     <div class="leaderboard-list">
       ${visibleRows.map((row) => {
-        const pointsAhead = Math.max(0, row.progress.earnedPoints - getYouthEarnedPoints(sessionUser.id));
+        const pointsAhead = Math.max(0, row.progress.earnedPoints - getYouthEarnedPoints(sessionUser.id, period));
         return `
           <div class="leaderboard-row${row.isCurrentYouth ? " is-current" : ""}">
             <span class="leaderboard-rank">#${row.rank}</span>
@@ -1203,6 +1652,7 @@ function buildSharedGoalsCard(sessionUser, sharedGoalRows) {
             <div>
               <strong>${escapeHtml(row.youth.name)}</strong>
               <span>${escapeHtml(row.youth.ward)} · ${escapeHtml(row.progress.currentLevelLabel)} · ${row.progress.earnedPoints} pts</span>
+              <span>${row.bestGoalProgress.completedChecks}/${row.bestGoalProgress.totalChecks} same-goal checks · ${row.bestGoalProgress.progressPercent}% complete · ${row.bestGoalProgress.weeklyChecks} this week</span>
             </div>
             <div class="shared-goal-tags">
               ${row.matchingGoals.slice(0, 3).map((goal) => `<span>${escapeHtml(goal.title)}</span>`).join("")}
@@ -1246,6 +1696,114 @@ async function updateCompetitionPreference(competitionOptIn) {
   }
 }
 
+function getNotificationChannels(user) {
+  return {
+    inApp: user.notificationChannels?.inApp !== false,
+    email: Boolean(user.notificationChannels?.email),
+    push: Boolean(user.notificationChannels?.push)
+  };
+}
+
+function getYouthNotifications(userId) {
+  return (state.notifications || [])
+    .filter((notification) => notification.userId === userId)
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+}
+
+function markYouthNotificationsRead(userId) {
+  state.notifications = (state.notifications || []).map((notification) =>
+    notification.userId === userId && !notification.readAt
+      ? { ...notification, readAt: getTodayDateString() }
+      : notification
+  );
+  saveState();
+  render();
+}
+
+async function updateSameGoalNotificationPreference(form) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser || sessionUser.role !== "youth") {
+    return;
+  }
+
+  const updatedUser = {
+    ...sessionUser,
+    sameGoalNotificationsOptIn: form.elements.sameGoalNotificationsOptIn.checked,
+    notificationChannels: {
+      inApp: true,
+      email: form.elements.sameGoalEmail.checked,
+      push: form.elements.sameGoalPush.checked
+    }
+  };
+
+  state.users = state.users.map((user) => user.id === updatedUser.id ? updatedUser : user);
+  saveState();
+  render();
+}
+
+function buildSameGoalNotificationCard(sessionUser) {
+  const card = document.createElement("section");
+  card.className = "form-card notification-preference-card";
+  const channels = getNotificationChannels(sessionUser);
+  card.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Same Goal Alerts</p>
+        <h3>${sessionUser.sameGoalNotificationsOptIn ? "Notifications On" : "Notifications Off"}</h3>
+        <p class="subgoal-meta">Get notified when another youth with the same templated goal passes your checkbox progress or completes more same-goal checks this week.</p>
+      </div>
+    </div>
+    <form class="stack same-goal-notification-form">
+      <label class="checkbox-label">
+        <input name="sameGoalNotificationsOptIn" type="checkbox" ${sessionUser.sameGoalNotificationsOptIn ? "checked" : ""}>
+        <span>Notify me when someone passes me on the same goal</span>
+      </label>
+      <label class="checkbox-label">
+        <input name="sameGoalEmail" type="checkbox" ${channels.email ? "checked" : ""}>
+        <span>Email me too</span>
+      </label>
+      <label class="checkbox-label">
+        <input name="sameGoalPush" type="checkbox" ${channels.push ? "checked" : ""}>
+        <span>Mobile push when available</span>
+      </label>
+      <p class="subgoal-meta">In-app alerts are active now. Email and push are saved as delivery preferences for the backend/mobile notification service.</p>
+      <button type="submit">Save Notification Settings</button>
+    </form>
+  `;
+  card.querySelector(".same-goal-notification-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    updateSameGoalNotificationPreference(event.currentTarget);
+  });
+  return card;
+}
+
+function buildNotificationInboxCard(sessionUser) {
+  const notifications = getYouthNotifications(sessionUser.id);
+  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
+  const card = document.createElement("section");
+  card.className = "form-card notification-inbox-card";
+  card.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Notifications</p>
+        <h3>${unreadCount ? `${unreadCount} New Alert${unreadCount === 1 ? "" : "s"}` : "No New Alerts"}</h3>
+      </div>
+      ${unreadCount ? `<button class="ghost-button" type="button" data-action="mark-notifications-read">Mark Read</button>` : ""}
+    </div>
+    <div class="notification-list">
+      ${notifications.slice(0, 6).map((notification) => `
+        <div class="notification-row${notification.readAt ? "" : " is-unread"}">
+          <strong>${escapeHtml(notification.goalTitle)}</strong>
+          <span>${escapeHtml(notification.message)}</span>
+          <span class="subgoal-meta">${formatCompletedDate(notification.createdAt)} · ${notification.channels.email ? "email queued" : "in-app"}${notification.channels.push ? " · push queued" : ""}</span>
+        </div>
+      `).join("") || `<p class="subgoal-meta">Same-goal alerts will appear here after you opt in.</p>`}
+    </div>
+  `;
+  card.querySelector("[data-action='mark-notifications-read']")?.addEventListener("click", () => markYouthNotificationsRead(sessionUser.id));
+  return card;
+}
+
 function buildCompetitionPreferenceCard(sessionUser) {
   const card = document.createElement("section");
   card.className = "form-card competition-preference-card";
@@ -1266,16 +1824,177 @@ function buildCompetitionPreferenceCard(sessionUser) {
   return card;
 }
 
+function setActiveLeaderboardPeriod(period) {
+  activeLeaderboardPeriod = LEADERBOARD_PERIODS[period] ? period : "all";
+  render();
+}
+
+function buildLeaderboardPeriodCard() {
+  const card = document.createElement("section");
+  card.className = "form-card leaderboard-period-card";
+  card.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Leaderboard Range</p>
+        <h3>${escapeHtml(LEADERBOARD_PERIODS[activeLeaderboardPeriod].label)}</h3>
+      </div>
+      <div class="leaderboard-period-toggle" role="group" aria-label="Leaderboard range">
+        ${Object.entries(LEADERBOARD_PERIODS).map(([period, config]) => `
+          <button class="tab-button${activeLeaderboardPeriod === period ? " active" : ""}" type="button" data-leaderboard-period="${period}">
+            ${escapeHtml(config.label)}
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+  card.querySelectorAll("[data-leaderboard-period]").forEach((button) => {
+    button.addEventListener("click", () => setActiveLeaderboardPeriod(button.dataset.leaderboardPeriod));
+  });
+  return card;
+}
+
 function buildYouthCompetitionBoard(sessionUser) {
   const stake = getStakeForWardName(sessionUser.ward);
-  const data = getYouthCompetitionData(sessionUser);
+  const data = getYouthCompetitionData(sessionUser, activeLeaderboardPeriod);
   const board = document.createElement("div");
   board.className = "competition-board";
   board.appendChild(buildCompetitionPreferenceCard(sessionUser));
-  board.appendChild(buildLeaderboardCard("Ward Leaderboard", "Ward Competition", data.wardRows, sessionUser));
-  board.appendChild(buildLeaderboardCard("Stake Leaderboard", stake?.name || "Stake Competition", data.stakeRows, sessionUser));
+  board.appendChild(buildSameGoalNotificationCard(sessionUser));
+  board.appendChild(buildNotificationInboxCard(sessionUser));
+  board.appendChild(buildLeaderboardPeriodCard());
+  board.appendChild(buildLeaderboardCard("Ward Leaderboard", "Ward Competition", data.wardRows, sessionUser, activeLeaderboardPeriod));
+  board.appendChild(buildLeaderboardCard("Stake Leaderboard", stake?.name || "Stake Competition", data.stakeRows, sessionUser, activeLeaderboardPeriod));
   board.appendChild(buildSharedGoalsCard(sessionUser, data.sharedGoalRows));
   return board;
+}
+
+function getManagerProgressRows(manager, period) {
+  return buildYouthCompetitionRows(getManagedYouth(manager), null, period);
+}
+
+function formatProgressRowsForEmail(rows) {
+  if (!rows.length) {
+    return "No youth are currently eligible for this leaderboard.";
+  }
+
+  return rows.slice(0, 10).map((row) =>
+    `#${row.rank} ${row.youth.name}: ${row.progress.earnedPoints} points, ${row.progress.currentLevelLabel}`
+  ).join("\n");
+}
+
+function buildWeeklyProgressEmailBody(manager) {
+  const managedYouth = getManagedYouth(manager);
+  const weeklyRows = getManagerProgressRows(manager, "week");
+  const monthlyRows = getManagerProgressRows(manager, "month");
+  const requiredGoalLines = managedYouth.map((youth) => {
+    const progress = getYouthLevelProgress(youth);
+    const required = progress.requiredGoalProgress;
+    return `${youth.name}: ${required.requiredCount ? `${required.completedCount}/${required.requiredCount} required goals complete` : "no required goals due at current level"}`;
+  });
+
+  return [
+    `Weekly youth progress summary for ${manager.ward}`,
+    "",
+    "This week's progress:",
+    formatProgressRowsForEmail(weeklyRows),
+    "",
+    "This month's progress:",
+    formatProgressRowsForEmail(monthlyRows),
+    "",
+    "Required goals:",
+    requiredGoalLines.join("\n") || "No youth accounts are available yet."
+  ].join("\n");
+}
+
+async function updateWeeklySummaryEmailPreference(enabled) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser || !isWardAdmin(sessionUser)) {
+    return;
+  }
+
+  state.users = state.users.map((user) =>
+    user.id === sessionUser.id ? { ...user, weeklySummaryEmailOptIn: enabled } : user
+  );
+  saveState();
+  render();
+}
+
+async function sendWeeklyProgressEmailPreview() {
+  const sessionUser = getSessionUser();
+  if (!sessionUser || !isWardAdmin(sessionUser) || !sessionUser.email) {
+    window.alert("Add an email address before sending weekly progress summaries.");
+    return;
+  }
+
+  const notification = {
+    id: createId("notification"),
+    userId: sessionUser.id,
+    actorId: sessionUser.id,
+    actorName: sessionUser.name,
+    goalId: null,
+    goalTitle: "Weekly Youth Progress Summary",
+    type: "weekly_progress_summary",
+    message: buildWeeklyProgressEmailBody(sessionUser),
+    recipientEmail: sessionUser.email,
+    pushToken: "",
+    createdAt: getTodayDateString(),
+    readAt: null,
+    channels: { inApp: false, email: true, push: false },
+    status: "queued"
+  };
+
+  state.notifications = [notification, ...(state.notifications || [])];
+  saveState();
+
+  try {
+    if (backendClient.dispatchNotifications) {
+      await backendClient.dispatchNotifications(STORAGE_KEY, state, { notifications: [notification] });
+    }
+    window.alert("Weekly progress email queued with this week's and this month's comparison.");
+  } catch (error) {
+    console.warn("Weekly progress email dispatch failed.", error);
+    window.alert("Weekly progress email is saved in the queue, but delivery could not be dispatched right now.");
+  }
+  render();
+}
+
+function buildWeeklyProgressEmailCard(sessionUser) {
+  const weeklyRows = getManagerProgressRows(sessionUser, "week");
+  const monthlyRows = getManagerProgressRows(sessionUser, "month");
+  const optedIn = sessionUser.weeklySummaryEmailOptIn !== false;
+  const card = document.createElement("section");
+  card.className = "form-card weekly-summary-email-card";
+  card.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Weekly Email</p>
+        <h3>${optedIn ? "Weekly Progress Email On" : "Weekly Progress Email Off"}</h3>
+        <p class="subgoal-meta">Sends ${escapeHtml(sessionUser.email || "this leader's email")} both this week's leaderboard and this month's leaderboard comparison.</p>
+      </div>
+      <button class="secondary-button" type="button" data-action="send-weekly-summary-preview">Send Test Summary</button>
+    </div>
+    <form class="stack weekly-summary-email-form">
+      <label class="checkbox-label">
+        <input name="weeklySummaryEmailOptIn" type="checkbox" ${optedIn ? "checked" : ""}>
+        <span>Receive the weekly progress email</span>
+      </label>
+      <div class="summary-comparison-grid">
+        <div>
+          <strong>This week</strong>
+          <p class="subgoal-meta">${weeklyRows.slice(0, 3).map((row) => `${row.rank}. ${escapeHtml(row.youth.name)} (${row.progress.earnedPoints} pts)`).join(" | ") || "No completed goals this week"}</p>
+        </div>
+        <div>
+          <strong>This month</strong>
+          <p class="subgoal-meta">${monthlyRows.slice(0, 3).map((row) => `${row.rank}. ${escapeHtml(row.youth.name)} (${row.progress.earnedPoints} pts)`).join(" | ") || "No completed goals this month"}</p>
+        </div>
+      </div>
+    </form>
+  `;
+  card.querySelector(".weekly-summary-email-form").addEventListener("change", (event) => {
+    updateWeeklySummaryEmailPreference(event.currentTarget.elements.weeklySummaryEmailOptIn.checked);
+  });
+  card.querySelector("[data-action='send-weekly-summary-preview']").addEventListener("click", sendWeeklyProgressEmailPreview);
+  return card;
 }
 
 function renderSessionProgressTracker(sessionUser) {
@@ -1557,6 +2276,10 @@ function getEnabledStatusForRole(role) {
 }
 
 function getActiveTemplate() {
+  if (activeTemplateId === NEW_TEMPLATE_ID) {
+    return null;
+  }
+
   if (!state.templates.length) {
     activeTemplateId = null;
     return null;
@@ -1578,6 +2301,7 @@ function setUserAuthMode(mode) {
   elements.createAccountModeButton.classList.toggle("active", mode === "create");
   elements.loginForm.classList.toggle("hidden", createMode);
   elements.registerForm.classList.toggle("hidden", !createMode);
+  renderRegisterWardOptions();
 }
 
 function setActiveRole(role) {
@@ -1603,6 +2327,45 @@ function setActiveRole(role) {
   elements.registerCompetitionField?.classList.toggle("hidden", role !== "youth");
   setUserAuthMode(activeUserAuthMode);
   elements.userAuthModes.classList.toggle("hidden", role === "administrator");
+}
+
+function renderRegisterWardOptions() {
+  if (!elements.registerWard || elements.registerWard.tagName !== "SELECT") {
+    return;
+  }
+
+  const wardOptions = (state.wards || [])
+    .filter((ward) => ward.name && normalizeWardKey(ward.name) !== "all")
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const currentValue = elements.registerWard.value;
+  elements.registerWard.innerHTML = `
+    <option value="">Choose your ward</option>
+    ${wardOptions.map((ward) => `<option value="${escapeHtml(ward.id)}">${escapeHtml(ward.name)}</option>`).join("")}
+  `;
+
+  if (wardOptions.some((ward) => ward.id === currentValue)) {
+    elements.registerWard.value = currentValue;
+  }
+}
+
+function getSelectedRegisterWard() {
+  const field = elements.registerWard;
+  if (!field) {
+    return { ward: "", wardId: "" };
+  }
+
+  if (field.tagName === "SELECT") {
+    const option = field.selectedOptions?.[0] || null;
+    return {
+      ward: option && option.value ? option.textContent.trim() : "",
+      wardId: field.value
+    };
+  }
+
+  return {
+    ward: field.value.trim(),
+    wardId: ""
+  };
 }
 
 async function login(event) {
@@ -1652,7 +2415,7 @@ async function registerUser(event) {
   const form = event.currentTarget;
   const name = form.elements.registerName.value.trim();
   const email = form.elements.registerEmail.value.trim().toLowerCase();
-  const ward = form.elements.registerWard.value.trim();
+  const { ward, wardId } = getSelectedRegisterWard();
   const organization = activeRole === "bishop" || activeRole === "parent" ? "all" : form.elements.registerOrganization.value;
   const competitionOptIn = activeRole === "youth" ? form.elements.registerCompetitionOptIn.checked : false;
   const password = form.elements.registerPassword.value;
@@ -1668,6 +2431,7 @@ async function registerUser(event) {
     name,
     email,
     ward,
+    wardId,
     organization,
     competitionOptIn,
     password,
@@ -1721,6 +2485,8 @@ async function toggleSubGoalUnit(goalId, subGoalId, unitIndex, completed) {
   if (!goal || isGoalClosed(goal) || !goal.goalApproved) {
     return;
   }
+  const sessionUser = getSessionUser();
+  const previousGoal = JSON.parse(JSON.stringify(goal));
 
   const subGoal = goal.subGoals.find((item) => item.id === subGoalId);
   if (!subGoal) {
@@ -1734,7 +2500,83 @@ async function toggleSubGoalUnit(goalId, subGoalId, unitIndex, completed) {
     resetCompletionApproval(goal);
   }
 
+  const queuedNotifications = completed && sessionUser?.role === "youth"
+    ? queueSameGoalPassedNotifications(previousGoal, goal, sessionUser)
+    : [];
+
   await persistGoal(goal);
+  if (queuedNotifications.length && backendClient.dispatchNotifications) {
+    backendClient.dispatchNotifications(STORAGE_KEY, state, { notifications: queuedNotifications }).catch((error) => {
+      console.warn("Notification dispatch failed; notifications remain queued.", error);
+    });
+  }
+}
+
+function queueSameGoalPassedNotifications(previousActorGoal, actorGoal, actor) {
+  const matchKey = getGoalMatchKey(actorGoal);
+  const previousTotal = getGoalCompletedCheckCount(previousActorGoal);
+  const nextTotal = getGoalCompletedCheckCount(actorGoal);
+  const previousWeek = getGoalCompletedCheckCount(previousActorGoal, "week");
+  const nextWeek = getGoalCompletedCheckCount(actorGoal, "week");
+
+  if (nextTotal <= previousTotal && nextWeek <= previousWeek) {
+    return;
+  }
+
+  const existingNotificationKeys = new Set((state.notifications || []).map((notification) =>
+    `${notification.userId}:${notification.actorId}:${notification.goalId}:${notification.createdAt}:${notification.type}`
+  ));
+
+  const newNotifications = state.goals
+    .filter((candidate) => candidate.userId !== actor.id && getGoalMatchKey(candidate) === matchKey)
+    .map((candidate) => {
+      const recipient = state.users.find((user) =>
+        user.id === candidate.userId &&
+        user.role === "youth" &&
+        user.sameGoalNotificationsOptIn &&
+        user.competitionOptIn !== false
+      );
+      if (!recipient) {
+        return null;
+      }
+
+      const recipientTotal = getGoalCompletedCheckCount(candidate);
+      const recipientWeek = getGoalCompletedCheckCount(candidate, "week");
+      const passedOverall = previousTotal <= recipientTotal && nextTotal > recipientTotal;
+      const passedThisWeek = previousWeek <= recipientWeek && nextWeek > recipientWeek;
+      if (!passedOverall && !passedThisWeek) {
+        return null;
+      }
+
+      const channels = getNotificationChannels(recipient);
+      const reason = passedOverall
+        ? `${actor.name} passed you on ${actorGoal.title} with ${nextTotal}/${getGoalTotalCheckCount(actorGoal)} checkboxes complete.`
+        : `${actor.name} has completed ${nextWeek} same-goal checks this week, which is now ahead of your ${recipientWeek}.`;
+      const notification = {
+        id: createId("notification"),
+        userId: recipient.id,
+        actorId: actor.id,
+        actorName: actor.name,
+        goalId: actorGoal.id,
+        goalTitle: actorGoal.title,
+        type: "same_goal_passed",
+        message: reason,
+        recipientEmail: recipient.email || "",
+        pushToken: recipient.pushToken || "",
+        createdAt: getTodayDateString(),
+        readAt: null,
+        channels,
+        status: channels.email || channels.push ? "queued" : "in_app"
+      };
+      const key = `${notification.userId}:${notification.actorId}:${notification.goalId}:${notification.createdAt}:${notification.type}`;
+      return existingNotificationKeys.has(key) ? null : notification;
+    })
+    .filter(Boolean);
+
+  if (newNotifications.length) {
+    state.notifications = [...newNotifications, ...(state.notifications || [])];
+  }
+  return newNotifications;
 }
 
 async function undoLatestSubGoalCompletion(goalId, subGoalId) {
@@ -1801,7 +2643,12 @@ async function approveGoal(goalId) {
   goal.leaderApproved = true;
   goal.leaderApprovedBy = sessionUser.name;
   goal.completedAt = getTodayDateString();
+  const youth = state.users.find((user) => user.id === goal.userId && user.role === "youth");
   await persistGoal(goal);
+  if (youth) {
+    await assignRequiredGoalsForCurrentAttainment(youth, sessionUser.id);
+    render();
+  }
 }
 
 function resetFirstRunState() {
@@ -1868,7 +2715,7 @@ function setActiveYouthDashboardView(view) {
 }
 
 function setActiveAdminDashboardView(view) {
-  activeAdminDashboardView = ["create-goal", "create-youth", "import-youth", "create-template", "templates", "goals", "ward-approval", "edit-youth", "ward-management"].includes(view) ? view : "overview";
+  activeAdminDashboardView = ["create-goal", "create-youth", "import-youth", "create-template", "templates", "required-goals", "goals", "ward-approval", "edit-youth", "ward-management"].includes(view) ? view : "overview";
   if (activeAdminDashboardView !== "edit-youth") {
     activeEditingYouthId = null;
   }
@@ -2067,6 +2914,7 @@ async function createYouthAccount(event) {
       fallbackState: getFallbackState()
     });
     state = normalizeState(nextState);
+    await assignMissingRequiredGoalsForYouth(user, 1, sessionUser.id);
     saveState();
     activeAdminDashboardView = "overview";
     form.reset();
@@ -2238,6 +3086,20 @@ async function importYouthRoster(event) {
     }
 
     state = normalizeState(nextState);
+    for (const imported of importedYouth) {
+      const youth = state.users.find((user) =>
+        user.role === "youth" &&
+        isSameWard(user.ward, sessionUser.ward) &&
+        user.organization === imported.organization &&
+        (
+          (imported.email && user.email === imported.email) ||
+          (!imported.email && user.name.toLowerCase() === imported.name.toLowerCase())
+        )
+      );
+      if (youth) {
+        await assignMissingRequiredGoalsForYouth(youth, 1, sessionUser.id);
+      }
+    }
     saveState();
     activeAdminDashboardView = "overview";
     form.reset();
@@ -2475,6 +3337,9 @@ function buildGoalCard(goal, mode) {
   const progress = getGoalProgress(goal);
   const status = getGoalStatus(goal);
   const goalClosed = isGoalClosed(goal);
+  const requiredGoalLabel = goal.requiredGoalLevel ? `Required Level ${goal.requiredGoalLevel}` : "";
+
+  card.classList.toggle("is-required-goal", Boolean(goal.requiredGoalLevel));
 
   fragment.querySelector(".goal-owner").textContent = owner ? owner.name : "Unknown user";
   fragment.querySelector(".goal-title").textContent = goal.title;
@@ -2493,6 +3358,7 @@ function buildGoalCard(goal, mode) {
   pointsRow.className = "goal-points-row";
   pointsRow.innerHTML = `
     <span class="goal-points-badge">${normalizePointValue(goal.points)} pts</span>
+    ${requiredGoalLabel ? `<span class="required-goal-badge">${requiredGoalLabel}</span>` : ""}
     <span class="subgoal-meta">${goal.leaderApproved ? "Awarded" : goal.goalApproved ? "Approved point value" : "Awaiting point approval"}</span>
   `;
   actions.appendChild(pointsRow);
@@ -2504,7 +3370,33 @@ function buildGoalCard(goal, mode) {
     : `Deadline: ${formatDeadline(goal.deadline)}`;
   actions.appendChild(deadlineMeta);
 
-  goal.subGoals.forEach((subGoal) => {
+  const useCompactChapterGrid = goal.subGoals.length > 40 && goal.subGoals.every((subGoal) => subGoal.repeatCount === 1);
+  if (useCompactChapterGrid) {
+    const chapterGrid = document.createElement("div");
+    chapterGrid.className = "chapter-checklist-grid";
+    goal.subGoals.forEach((subGoal) => {
+      const completedDate = subGoal.completedUnits?.[0] || null;
+      const label = document.createElement("label");
+      label.className = `chapter-check-item${completedDate ? " completed" : ""}`;
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = Boolean(completedDate);
+      checkbox.disabled = mode !== "youth" || goalClosed || !goal.goalApproved;
+      checkbox.title = completedDate ? `Completed on ${formatCompletedDate(completedDate)}` : "Not completed yet";
+      checkbox.dataset.completedDate = completedDate || "";
+      if (mode === "youth") {
+        checkbox.addEventListener("change", (event) => {
+          toggleSubGoalUnit(goal.id, subGoal.id, 0, event.target.checked);
+        });
+      }
+      const text = document.createElement("span");
+      text.textContent = subGoal.title;
+      label.append(checkbox, text);
+      chapterGrid.appendChild(label);
+    });
+    subGoalList.appendChild(chapterGrid);
+  } else {
+    goal.subGoals.forEach((subGoal) => {
     const completedCount = getCompletedCount(subGoal);
     const row = document.createElement("div");
     row.className = "subgoal-row";
@@ -2567,7 +3459,8 @@ function buildGoalCard(goal, mode) {
 
     row.append(details, actionWrap);
     subGoalList.appendChild(row);
-  });
+    });
+  }
 
   if (mode === "youth" && !goal.goalApproved) {
     const note = document.createElement("p");
@@ -3394,6 +4287,7 @@ function renderAdministratorDashboard(sessionUser) {
 
 function buildTemplateWorkspace(template) {
   const sessionUser = getSessionUser();
+  const isCreatingTemplate = activeTemplateId === NEW_TEMPLATE_ID;
   const canAssignTemplate = Boolean(template && sessionUser && isWardAdmin(sessionUser));
   const managedYouthOptions = canAssignTemplate
     ? getManagedYouth(sessionUser).map((user) => `<option value="${user.id}">${user.name} (${getOrganizationLabel(user.organization)})</option>`).join("")
@@ -3406,7 +4300,45 @@ function buildTemplateWorkspace(template) {
       <span>${item.subGoals.length} checklist item${item.subGoals.length === 1 ? "" : "s"}</span>
     </button>
   `).join("");
-  const editorMarkup = template ? `
+  const createTemplateMarkup = `
+    <form class="inline-form template-create-form" id="createTemplateForm">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">New Template</p>
+          <h3>Create A Goal Template</h3>
+        </div>
+      </div>
+      <label>
+        <span>Template title</span>
+        <input name="templateTitle" type="text" placeholder="Example: 90-day reading challenge" required>
+      </label>
+      <label>
+        <span>Template summary</span>
+        <textarea name="templateSummary" placeholder="Describe what this goal template is for." required></textarea>
+      </label>
+      <label>
+        <span>Default points</span>
+        <input name="templatePoints" type="number" min="0" step="1" value="0" required>
+      </label>
+      <div class="draft-builder">
+        <div class="draft-builder-grid">
+          <label>
+            <span>Checklist item description</span>
+            <input name="newSubGoalTitle" type="text" placeholder="Example: Read 20 minutes a day">
+          </label>
+          <label>
+            <span>Quantity</span>
+            <input name="newSubGoalRepeatCount" type="number" min="1" step="1" value="1">
+          </label>
+        </div>
+        <button class="secondary-button" type="button" id="addTemplateChecklistItemButton">Add Checklist Item</button>
+        <input name="goalSubGoalsData" type="hidden" value="[]">
+        <div class="draft-checklist-list"></div>
+      </div>
+      <button class="primary-button" type="submit">Save Template</button>
+    </form>
+  `;
+  const editorMarkup = isCreatingTemplate ? createTemplateMarkup : template ? `
     <form class="inline-form template-edit-form">
       <div class="panel-header">
         <div>
@@ -3449,8 +4381,8 @@ function buildTemplateWorkspace(template) {
   ` : `
     <div class="template-empty-state">
       <p class="eyebrow">Template Editor</p>
-      <h3>Template form cleared</h3>
-      <p>Select a template from the list to edit it, or use the create-template form above to make a new one.</p>
+      <h3>No template selected</h3>
+      <p>Select a template from the list to edit it, or choose Create New Template.</p>
     </div>
   `;
 
@@ -3464,7 +4396,7 @@ function buildTemplateWorkspace(template) {
           <p class="eyebrow">Existing Templates</p>
           <h3>Template List</h3>
         </div>
-        <div class="session-badge">${state.templates.length}</div>
+        <button class="secondary-button" type="button" data-action="new-template">Create New Template</button>
       </div>
       <div class="template-list">
         ${templateListMarkup}
@@ -3482,6 +4414,16 @@ function buildTemplateWorkspace(template) {
       assignTemplateToUser(template.id, form.elements.templateAssignTarget.value);
     });
   }
+  const createForm = card.querySelector("#createTemplateForm");
+  if (createForm) {
+    createForm.addEventListener("submit", createTemplate);
+    createForm.querySelector("#addTemplateChecklistItemButton").addEventListener("click", () => addDraftChecklistItem(createForm));
+    renderDraftChecklistItems(createForm);
+  }
+  card.querySelector("[data-action='new-template']").addEventListener("click", () => {
+    activeTemplateId = NEW_TEMPLATE_ID;
+    render();
+  });
   card.querySelectorAll("[data-template-id]").forEach((button) => {
     button.addEventListener("click", () => {
       activeTemplateId = button.dataset.templateId;
@@ -3506,6 +4448,7 @@ function buildAdminDashboardNav(sessionUser, counts = {}) {
   ];
 
   if (sessionUser.role === "bishop") {
+    buttons.push(["required-goals", "Required Level Goals", "Bishop-only attainment goals"]);
     buttons.push(["ward-approval", "Ward Approval", `${counts.pendingLeaderCount || 0} leaders waiting`]);
   }
 
@@ -3588,6 +4531,12 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
           <span class="subgoal-meta">Next: ${escapeHtml(levelProgress.nextLevelLabel)}</span>
           <span class="subgoal-meta">${escapeHtml(levelProgress.nextProgressLabel)}</span>
         </div>
+        ${levelProgress.requiredGoalProgress.requiredCount ? `
+          <div class="youth-level-progress-next">
+            <span class="subgoal-meta">Required goals</span>
+            <span class="subgoal-meta">${levelProgress.requiredGoalProgress.completedCount}/${levelProgress.requiredGoalProgress.requiredCount} complete</span>
+          </div>
+        ` : ""}
         <div class="mini-progress-bar youth-level-progress-bar" aria-label="${levelProgress.nextPercent}% toward ${escapeHtml(levelProgress.nextLevelLabel)}">
           <div class="mini-progress-fill" style="width:${levelProgress.nextPercent}%"></div>
         </div>
@@ -3813,6 +4762,255 @@ function buildYouthRosterImportForm(organizationOptions) {
     reader.readAsText(file);
   });
   return importForm;
+}
+
+async function assignRequiredGoalDefinitionToArrivedYouth(requiredGoal, sessionUser) {
+  const managedYouth = getManagedYouth(sessionUser).filter((youth) => isSameWard(youth.ward, requiredGoal.ward));
+  for (const youth of managedYouth) {
+    const currentLevel = Math.min(getYouthCompletedAttainmentLevels(youth) + 1, LEVEL_POINT_REQUIREMENTS.length);
+    if (currentLevel === Number(requiredGoal.level)) {
+      await assignMissingRequiredGoalsForYouth(youth, requiredGoal.level, sessionUser.id);
+    }
+  }
+}
+
+async function backfillRequiredGoalsForManagedYouth() {
+  const sessionUser = getSessionUser();
+  if (!sessionUser || sessionUser.role !== "bishop") {
+    return;
+  }
+
+  let assignedCount = 0;
+  for (const youth of getManagedYouth(sessionUser)) {
+    assignedCount += await assignRequiredGoalsForCurrentAttainment(youth, sessionUser.id);
+  }
+  window.alert(`Assigned ${assignedCount} missing required goal${assignedCount === 1 ? "" : "s"}.`);
+  render();
+}
+
+async function createRequiredLevelGoal(event) {
+  event.preventDefault();
+  const sessionUser = getSessionUser();
+  if (!sessionUser || sessionUser.role !== "bishop") {
+    return;
+  }
+
+  const form = event.currentTarget;
+  const subGoals = readDraftChecklistItems(form);
+  const requiredGoal = {
+    id: createId("required-goal"),
+    ward: sessionUser.ward,
+    level: Number(form.elements.requiredGoalLevel.value),
+    title: form.elements.requiredGoalTitle.value.trim(),
+    summary: form.elements.requiredGoalSummary.value.trim(),
+    points: normalizePointValue(form.elements.requiredGoalPoints.value),
+    deadlineDays: Math.max(1, Number(form.elements.requiredGoalDeadlineDays.value || 30)),
+    subGoals: subGoals.map((item) => ({
+      id: createId("required-subgoal"),
+      title: item.title,
+      repeatCount: item.repeatCount
+    }))
+  };
+
+  if (!requiredGoal.title || !requiredGoal.summary || !requiredGoal.subGoals.length) {
+    window.alert("Required goals need a title, summary, and at least one checklist item.");
+    return;
+  }
+
+  const nextState = await backendClient.createRequiredLevelGoal(STORAGE_KEY, state, {
+    requiredGoal,
+    createdBy: sessionUser.id,
+    fallbackState: getFallbackState()
+  });
+  state = normalizeState(nextState);
+  await assignRequiredGoalDefinitionToArrivedYouth(requiredGoal, sessionUser);
+  saveState();
+  form.reset();
+  writeDraftChecklistItems(form, []);
+  activeAdminDashboardView = "required-goals";
+  render();
+}
+
+async function updateRequiredLevelGoal(requiredGoalId, form) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser || sessionUser.role !== "bishop") {
+    return;
+  }
+
+  const requiredGoal = (state.requiredLevelGoals || []).find((goal) => goal.id === requiredGoalId && isSameWard(goal.ward, sessionUser.ward));
+  if (!requiredGoal) {
+    return;
+  }
+
+  const subGoals = Array.from(form.querySelectorAll(".editable-subgoal-row")).map((row, index) => ({
+    id: requiredGoal.subGoals[index]?.id || createId("required-subgoal"),
+    title: row.querySelector("[name='editableSubGoalTitle']").value.trim(),
+    repeatCount: parseRepeatCount(row.querySelector("[name='editableSubGoalRepeatCount']").value)
+  })).filter((item) => item.title);
+
+  const title = form.elements.editRequiredGoalTitle.value.trim();
+  const summary = form.elements.editRequiredGoalSummary.value.trim();
+  if (!title || !summary || !subGoals.length) {
+    window.alert("Required goals need a title, summary, and at least one checklist item.");
+    return;
+  }
+
+  requiredGoal.level = Number(form.elements.editRequiredGoalLevel.value);
+  requiredGoal.title = title;
+  requiredGoal.summary = summary;
+  requiredGoal.points = normalizePointValue(form.elements.editRequiredGoalPoints.value);
+  requiredGoal.deadlineDays = Math.max(1, Number(form.elements.editRequiredGoalDeadlineDays.value || 30));
+  requiredGoal.subGoals = subGoals;
+  const nextState = await backendClient.updateRequiredLevelGoal(STORAGE_KEY, state, {
+    requiredGoal,
+    updatedBy: sessionUser.id,
+    fallbackState: getFallbackState()
+  });
+  state = normalizeState(nextState);
+  await assignRequiredGoalDefinitionToArrivedYouth(requiredGoal, sessionUser);
+  saveState();
+  render();
+}
+
+function deleteRequiredLevelGoal(requiredGoalId) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser || sessionUser.role !== "bishop") {
+    return;
+  }
+
+  backendClient.deleteRequiredLevelGoal(STORAGE_KEY, state, {
+    requiredGoalId,
+    deletedBy: sessionUser.id,
+    fallbackState: getFallbackState()
+  }).then((nextState) => {
+    state = normalizeState(nextState);
+    saveState();
+    render();
+  }).catch((error) => {
+    console.warn("Required goal deletion failed.", error);
+    window.alert(error?.message || "The required goal could not be deleted right now.");
+  });
+}
+
+function buildRequiredLevelGoalsView(sessionUser) {
+  const section = document.createElement("section");
+  section.className = "admin-overview-section";
+  const requiredGoals = (state.requiredLevelGoals || [])
+    .filter((goal) => isSameWard(goal.ward, sessionUser.ward))
+    .sort((left, right) => Number(left.level) - Number(right.level) || left.title.localeCompare(right.title));
+  const levelOptions = getLevelPointMilestones()
+    .map((level) => `<option value="${level.index}">Level ${level.index}</option>`)
+    .join("");
+
+  section.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Bishop Only</p>
+        <h3>Required Level Goals</h3>
+        <p class="subgoal-meta">Required goals are assigned when youth arrive at a level. Level attainment requires both the point threshold and these required goals.</p>
+      </div>
+      <div class="admin-action-row">
+        <button class="secondary-button" type="button" data-action="backfill-required-goals">Assign Missing To Current Youth</button>
+        <div class="session-badge">${requiredGoals.length} required</div>
+      </div>
+    </div>
+    <form class="form-card inline-form" id="createRequiredLevelGoalForm">
+      <h3>Create required goal</h3>
+      <label>
+        <span>Level</span>
+        <select name="requiredGoalLevel">${levelOptions}</select>
+      </label>
+      <label>
+        <span>Goal title</span>
+        <input name="requiredGoalTitle" type="text" placeholder="Required level goal" required>
+      </label>
+      <label>
+        <span>Goal summary</span>
+        <textarea name="requiredGoalSummary" placeholder="Describe the required goal." required></textarea>
+      </label>
+      <label>
+        <span>Point value</span>
+        <input name="requiredGoalPoints" type="number" min="0" step="1" value="0" required>
+      </label>
+      <label>
+        <span>Days to complete after assignment</span>
+        <input name="requiredGoalDeadlineDays" type="number" min="1" step="1" value="30" required>
+      </label>
+      <div class="draft-builder">
+        <div class="draft-builder-grid">
+          <label>
+            <span>Checklist item description</span>
+            <input name="newSubGoalTitle" type="text" placeholder="Example: Meet with the bishop">
+          </label>
+          <label>
+            <span>Quantity</span>
+            <input name="newSubGoalRepeatCount" type="number" min="1" step="1" value="1">
+          </label>
+        </div>
+        <button class="secondary-button" type="button" id="addRequiredGoalChecklistItemButton">Add Checklist Item</button>
+        <input name="goalSubGoalsData" type="hidden" value="[]">
+        <div class="draft-checklist-list"></div>
+      </div>
+      <button class="primary-button" type="submit">Create Required Goal</button>
+    </form>
+    <div class="required-goal-list">
+      ${requiredGoals.map((goal) => `
+        <form class="form-card inline-form required-goal-card" data-required-goal-id="${goal.id}">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Level ${goal.level}</p>
+              <h3>${escapeHtml(goal.title)}</h3>
+            </div>
+            <div class="session-badge">${goal.points} pts</div>
+          </div>
+          <label>
+            <span>Level</span>
+            <select name="editRequiredGoalLevel">
+              ${getLevelPointMilestones().map((level) => `<option value="${level.index}"${Number(goal.level) === level.index ? " selected" : ""}>Level ${level.index}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Goal title</span>
+            <input name="editRequiredGoalTitle" type="text" value="${escapeHtml(goal.title)}" required>
+          </label>
+          <label>
+            <span>Goal summary</span>
+            <textarea name="editRequiredGoalSummary" required>${escapeHtml(goal.summary)}</textarea>
+          </label>
+          <label>
+            <span>Point value</span>
+            <input name="editRequiredGoalPoints" type="number" min="0" step="1" value="${goal.points}" required>
+          </label>
+          <label>
+            <span>Days to complete after assignment</span>
+            <input name="editRequiredGoalDeadlineDays" type="number" min="1" step="1" value="${goal.deadlineDays}" required>
+          </label>
+          <div class="editable-subgoal-list">
+            ${buildEditableSubgoalRows(goal.subGoals)}
+          </div>
+          <div class="admin-action-row">
+            <button class="danger-button" type="button" data-action="delete-required-goal">Delete</button>
+            <button class="primary-button" type="submit">Save Required Goal</button>
+          </div>
+        </form>
+      `).join("") || `<section class="form-card"><h3>No required goals yet</h3><p class="subgoal-meta">Create Level 1 goals before adding new youth if you want them assigned immediately.</p></section>`}
+    </div>
+  `;
+
+  const form = section.querySelector("#createRequiredLevelGoalForm");
+  form.addEventListener("submit", createRequiredLevelGoal);
+  form.querySelector("#addRequiredGoalChecklistItemButton").addEventListener("click", () => addDraftChecklistItem(form));
+  renderDraftChecklistItems(form);
+  section.querySelector("[data-action='backfill-required-goals']").addEventListener("click", backfillRequiredGoalsForManagedYouth);
+  section.querySelectorAll(".required-goal-card").forEach((card) => {
+    const requiredGoalId = card.dataset.requiredGoalId;
+    card.addEventListener("submit", (event) => {
+      event.preventDefault();
+      updateRequiredLevelGoal(requiredGoalId, card);
+    });
+    card.querySelector("[data-action='delete-required-goal']").addEventListener("click", () => deleteRequiredLevelGoal(requiredGoalId));
+  });
+  return section;
 }
 
 function buildYouthAccountEditor(youth, organizationOptions) {
@@ -4079,6 +5277,7 @@ function renderLeaderDashboard(sessionUser) {
 
   if (activeAdminDashboardView === "overview") {
     elements.leaderDashboard.appendChild(buildAdminSummaryCards(sessionUser, goals, managedYouth, approvedLeaders, pendingLeaders));
+    elements.leaderDashboard.appendChild(buildWeeklyProgressEmailCard(sessionUser));
     elements.leaderDashboard.appendChild(buildManagedYouthOverview(sessionUser, managedYouth));
     return;
   }
@@ -4111,6 +5310,11 @@ function renderLeaderDashboard(sessionUser) {
 
   if (activeAdminDashboardView === "templates") {
     elements.leaderDashboard.appendChild(buildTemplateEditorView());
+    return;
+  }
+
+  if (activeAdminDashboardView === "required-goals" && sessionUser.role === "bishop") {
+    elements.leaderDashboard.appendChild(buildRequiredLevelGoalsView(sessionUser));
     return;
   }
 
@@ -4159,6 +5363,7 @@ function render() {
     elements.dashboardTitle.textContent = "Choose a login to get started";
     closeAccountMenu();
     renderSessionProgressTracker(null);
+    renderRegisterWardOptions();
     return;
   }
 

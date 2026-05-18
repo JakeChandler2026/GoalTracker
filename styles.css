@@ -304,13 +304,28 @@ button:hover {
 
 .competition-board,
 .leaderboard-list,
-.shared-goal-list {
+.shared-goal-list,
+.notification-list {
   display: grid;
   gap: 12px;
 }
 
+.leaderboard-period-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.leaderboard-period-toggle .tab-button {
+  flex: 0 1 auto;
+  min-width: 96px;
+  padding: 9px 12px;
+}
+
 .leaderboard-row,
-.shared-goal-row {
+.shared-goal-row,
+.notification-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 14px;
@@ -319,6 +334,16 @@ button:hover {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
+}
+
+.notification-row {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.notification-row.is-unread {
+  border-color: rgba(0, 200, 117, 0.36);
+  background: #effbf6;
 }
 
 .leaderboard-row.is-current {
@@ -458,6 +483,23 @@ button:hover {
 
 .admin-summary-grid {
   margin-bottom: 18px;
+}
+
+.weekly-summary-email-card {
+  margin-bottom: 18px;
+}
+
+.summary-comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.summary-comparison-grid > div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .admin-overview-section {
@@ -1030,6 +1072,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin: 0 0 16px;
 }
@@ -1043,6 +1086,22 @@ button:hover {
   background: #fff0dc;
   color: #8f5917;
   font-weight: 700;
+}
+
+.required-goal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid rgba(22, 119, 255, 0.28);
+  border-radius: 999px;
+  background: #eaf4ff;
+  color: #1559a8;
+  font-weight: 800;
+}
+
+.goal-card.is-required-goal {
+  border-color: rgba(22, 119, 255, 0.32);
+  box-shadow: inset 4px 0 0 rgba(22, 119, 255, 0.72), 0 14px 34px rgba(41, 39, 32, 0.08);
 }
 
 .goal-title {
@@ -1146,6 +1205,42 @@ button:hover {
   margin: 0;
 }
 
+.chapter-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.chapter-check-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.chapter-check-item input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.chapter-check-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chapter-check-item.completed {
+  background: #e5f9f1;
+  border-color: rgba(0, 200, 117, 0.35);
+  color: #007f52;
+}
+
 .checklist-label.completed {
   text-decoration: line-through;
   color: var(--muted);
@@ -1224,6 +1319,14 @@ button:hover {
 
   .leaderboard-points {
     text-align: left;
+  }
+
+  .leaderboard-period-toggle {
+    justify-content: stretch;
+  }
+
+  .leaderboard-period-toggle .tab-button {
+    flex: 1 1 120px;
   }
 
   .shared-goal-tags {

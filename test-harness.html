@@ -58,6 +58,14 @@
       element.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     }
 
+    function chooseRegisterWard(doc, wardText) {
+      const select = doc.getElementById("registerWard");
+      const option = Array.from(select.options).find((item) => item.textContent.includes(wardText));
+      assert(Boolean(option), `Signup ward dropdown includes ${wardText}`);
+      select.value = option.value;
+      change(select);
+    }
+
     function dragBefore(win, source, target) {
       const dataTransfer = new win.DataTransfer();
       source.dispatchEvent(new win.DragEvent("dragstart", { bubbles: true, dataTransfer }));
@@ -166,6 +174,7 @@
         assert(Boolean(reloadedDoc.getElementById("createAdminWardForm")), "Administrator can open ward management");
         const initialManagedWardNames = Array.from(reloadedDoc.querySelectorAll(".admin-ward-card h3")).map((node) => node.textContent);
         reloadedDoc.querySelector("#createAdminWardForm input[name='wardName']").value = "Cedar Ridge Ward";
+        reloadedDoc.querySelector("#createAdminWardForm input[name='stakeName']").value = "Pocatello Idaho Stake";
         submit(reloadedDoc.getElementById("createAdminWardForm"));
         await new Promise((resolve) => setTimeout(resolve, 250));
         assert(
@@ -173,6 +182,7 @@
           "Administrator can create a new ward"
         );
         reloadedDoc.querySelector("#createAdminWardForm input[name='wardName']").value = "Cedar Ridge";
+        reloadedDoc.querySelector("#createAdminWardForm input[name='stakeName']").value = "Pocatello Idaho Stake";
         lastAlertMessage = "";
         submit(reloadedDoc.getElementById("createAdminWardForm"));
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -241,12 +251,46 @@
         assert(progressTracker.textContent.includes("Iron Rod Award"), "Young Men level 1 award renders");
         assert(progressTracker.textContent.includes("Stripling Warrior Award"), "Young Men level 2 award renders");
         assert(progressTracker.textContent.includes("Helaman Leadership Award"), "Young Men level 3 award renders");
-        assert(progressTracker.textContent.includes("0 pts"), "Youth starts with zero approved points");
+        assert(progressTracker.textContent.includes("150 pts"), "Seeded youth progress appears in the account menu");
         assert(reloadedDoc.querySelectorAll(".goal-card").length >= 2, "User dashboard renders goals");
         assert(
           Array.from(reloadedDoc.querySelectorAll(".goal-points-badge")).some((badge) => badge.textContent.includes("40")),
           "Existing goal point values render on goal cards"
         );
+        click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
+          button.textContent.includes("Competition")
+        ));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const leaderboardRangeButtons = Array.from(reloadedDoc.querySelectorAll("[data-leaderboard-period]"));
+        assert(leaderboardRangeButtons.length === 3, "Leaderboard range selector renders all time, week, and month views");
+        assert(reloadedDoc.body.textContent.includes("Same Goal Alerts"), "Youth can manage same-goal notification settings");
+        const notificationForm = reloadedDoc.querySelector(".same-goal-notification-form");
+        notificationForm.elements.sameGoalNotificationsOptIn.checked = true;
+        notificationForm.elements.sameGoalEmail.checked = true;
+        notificationForm.elements.sameGoalPush.checked = true;
+        submit(notificationForm);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert(reloadedDoc.body.textContent.includes("Notifications On"), "Youth can opt in to same-goal notifications");
+        click(Array.from(reloadedDoc.querySelectorAll("[data-leaderboard-period]")).find((button) => button.dataset.leaderboardPeriod === "month"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert(reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Goals approved this month"), "Leaderboard can filter rankings by month");
+        assert(
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Josh Carter (You)") &&
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("150"),
+          "Month comparison shows Josh leading from seeded monthly progress"
+        );
+        click(Array.from(reloadedDoc.querySelectorAll("[data-leaderboard-period]")).find((button) => button.dataset.leaderboardPeriod === "week"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert(reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Goals approved this week"), "Leaderboard can filter rankings by week");
+        assert(
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Maria Lopez") &&
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("20 ahead"),
+          "Week comparison shows a competing youth ahead from seeded weekly progress"
+        );
+        click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
+          button.textContent.includes("Existing Goals")
+        ));
+        await new Promise((resolve) => setTimeout(resolve, 150));
         const originalYouthGoalTitles = Array.from(reloadedDoc.querySelectorAll(".goal-title")).map((node) => node.textContent);
         click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
           button.textContent.includes("Prioritize Goals")
@@ -415,8 +459,85 @@
         const updatedCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
           card.querySelector(".goal-title").textContent === "Scripture Study Goal"
         );
-        const updatedCheckboxes = updatedCard.querySelectorAll(".checklist-track input[type='checkbox']");
+        let updatedCheckboxes = updatedCard.querySelectorAll(".checklist-track input[type='checkbox']");
         assert(Boolean(updatedCheckboxes[0].dataset.completedDate), "A completed checkbox stores its completion date");
+
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("bishopTab"));
+        reloadedDoc.getElementById("username").value = "ward.bishop@example.com";
+        reloadedDoc.getElementById("password").value = "steward123";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        await openAdminView(reloadedDoc, "Create Goal For Youth");
+        const sameGoalForm = reloadedDoc.getElementById("createManagedGoalForm");
+        sameGoalForm.elements.targetYouthId.value = Array.from(sameGoalForm.elements.targetYouthId.options)
+          .find((option) => option.textContent.includes("Maria Lopez")).value;
+        sameGoalForm.elements.goalTitle.value = "Scripture Study Goal";
+        sameGoalForm.elements.goalSummary.value = "Same goal used to test pass-you email notifications.";
+        sameGoalForm.elements.goalPoints.value = "80";
+        sameGoalForm.elements.newSubGoalTitle.value = "Read daily";
+        sameGoalForm.elements.newSubGoalRepeatCount.value = "5";
+        click(sameGoalForm.querySelector("#addManagedGoalChecklistItemButton"));
+        submit(sameGoalForm);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("userTab"));
+        reloadedDoc.getElementById("username").value = "maria@example.com";
+        reloadedDoc.getElementById("password").value = "growth456";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        const mariaSameGoalCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.querySelector(".goal-title").textContent === "Scripture Study Goal"
+        );
+        assert(Boolean(mariaSameGoalCard), "Second youth receives the same goal for notification testing");
+        const mariaSameGoalCheckboxes = mariaSameGoalCard.querySelectorAll(".checklist-track input[type='checkbox']");
+        mariaSameGoalCheckboxes[0].checked = true;
+        change(mariaSameGoalCheckboxes[0]);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const mariaSameGoalCardAfterFirstCheck = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.querySelector(".goal-title").textContent === "Scripture Study Goal"
+        );
+        const mariaSameGoalCheckboxesAfterFirstCheck = mariaSameGoalCardAfterFirstCheck.querySelectorAll(".checklist-track input[type='checkbox']");
+        mariaSameGoalCheckboxesAfterFirstCheck[1].checked = true;
+        change(mariaSameGoalCheckboxesAfterFirstCheck[1]);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("userTab"));
+        reloadedDoc.getElementById("username").value = "josh@example.com";
+        reloadedDoc.getElementById("password").value = "goal123";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
+          button.textContent.includes("Competition")
+        ));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert(
+          Array.from(reloadedDoc.querySelectorAll(".notification-row")).some((row) =>
+            row.textContent.includes("Maria Lopez passed you on Scripture Study Goal") &&
+            row.textContent.includes("email queued")
+          ),
+          "Email notification is queued when someone passes you on the same goal"
+        );
+        click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
+          button.textContent.includes("Existing Goals")
+        ));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        const updatedCardAfterNotificationTest = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.querySelector(".goal-title").textContent === "Scripture Study Goal"
+        );
+        updatedCheckboxes = updatedCardAfterNotificationTest.querySelectorAll(".checklist-track input[type='checkbox']");
         updatedCheckboxes[1].checked = true;
         change(updatedCheckboxes[1]);
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -451,6 +572,16 @@
         await new Promise((resolve) => setTimeout(resolve, 250));
 
         assert(reloadedDoc.getElementById("sessionTitle").textContent.includes("Brother Jensen"), "Leader login succeeds");
+        await openAdminView(reloadedDoc, "Overview");
+        assert(
+          reloadedDoc.querySelector(".weekly-summary-email-card")?.textContent.includes("This week") &&
+          reloadedDoc.querySelector(".weekly-summary-email-card")?.textContent.includes("This month"),
+          "Youth leader overview shows weekly email with weekly and monthly comparisons"
+        );
+        lastAlertMessage = "";
+        click(reloadedDoc.querySelector("[data-action='send-weekly-summary-preview']"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(lastAlertMessage.includes("Weekly progress email queued"), "Youth leader can queue the weekly progress email");
         await openAdminView(reloadedDoc, "Review Goals");
         const visibleLeaderGoalTitles = Array.from(reloadedDoc.querySelectorAll(".goal-title")).map((node) => node.textContent);
         assert(!visibleLeaderGoalTitles.includes("Temple Family History Goal"), "Young Men leader cannot see Young Women goals");
@@ -770,6 +901,24 @@
         await openAdminView(reloadedDoc, "Template Editor");
         const templateCards = reloadedDoc.querySelectorAll(".template-grid .form-card");
         assert(templateCards.length >= 2, "Leader can see goal templates");
+        click(reloadedDoc.querySelector("[data-action='new-template']"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const inlineCreateTemplateForm = reloadedDoc.getElementById("createTemplateForm");
+        assert(Boolean(inlineCreateTemplateForm), "Template screen has a Create New Template button that opens the creation form");
+        inlineCreateTemplateForm.elements.templateTitle.value = "Template Screen Button Goal";
+        inlineCreateTemplateForm.elements.templateSummary.value = "Created directly from the template editor screen.";
+        inlineCreateTemplateForm.elements.templatePoints.value = "25";
+        inlineCreateTemplateForm.elements.newSubGoalTitle.value = "Finish the template-screen checklist";
+        inlineCreateTemplateForm.elements.newSubGoalRepeatCount.value = "1";
+        click(inlineCreateTemplateForm.querySelector("#addTemplateChecklistItemButton"));
+        submit(inlineCreateTemplateForm);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(
+          Array.from(reloadedDoc.querySelectorAll(".template-list-item")).some((button) =>
+            button.textContent.includes("Template Screen Button Goal")
+          ),
+          "Template created from the Template Editor screen appears in the template list"
+        );
         click(Array.from(reloadedDoc.querySelectorAll(".template-list-item")).find((button) =>
           button.textContent.includes("Daily Scripture Habit")
         ));
@@ -819,7 +968,7 @@
         click(reloadedDoc.getElementById("createAccountModeButton"));
         reloadedDoc.getElementById("registerName").value = "New Leader";
         reloadedDoc.getElementById("registerEmail").value = "new.leader@example.com";
-        reloadedDoc.getElementById("registerWard").value = "Mapleton 1st Ward";
+        chooseRegisterWard(reloadedDoc, "Mapleton 1st Ward");
         reloadedDoc.getElementById("registerOrganization").value = "young_men";
         reloadedDoc.getElementById("registerPassword").value = "simplepass";
         submit(reloadedDoc.getElementById("registerForm"));
@@ -834,7 +983,7 @@
         click(reloadedDoc.getElementById("createAccountModeButton"));
         reloadedDoc.getElementById("registerName").value = "Bishop Self Signup";
         reloadedDoc.getElementById("registerEmail").value = "bishop.self@example.com";
-        reloadedDoc.getElementById("registerWard").value = "Mapleton 1st Ward";
+        chooseRegisterWard(reloadedDoc, "Mapleton 1st Ward");
         reloadedDoc.getElementById("registerPassword").value = "bishoppass";
         submit(reloadedDoc.getElementById("registerForm"));
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -873,7 +1022,7 @@
         click(reloadedDoc.getElementById("createAccountModeButton"));
         reloadedDoc.getElementById("registerName").value = "Jacob Chandler";
         reloadedDoc.getElementById("registerEmail").value = "jacob.chandler@example.com";
-        reloadedDoc.getElementById("registerWard").value = "Pocatello Creek";
+        chooseRegisterWard(reloadedDoc, "Pocatello Creek Ward");
         reloadedDoc.getElementById("registerPassword").value = "steward789";
         submit(reloadedDoc.getElementById("registerForm"));
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -893,6 +1042,16 @@
         submit(reloadedDoc.getElementById("loginForm"));
         await new Promise((resolve) => setTimeout(resolve, 250));
 
+        await openAdminView(reloadedDoc, "Overview");
+        assert(
+          reloadedDoc.querySelector(".weekly-summary-email-card")?.textContent.includes("Maria Lopez") &&
+          reloadedDoc.querySelector(".weekly-summary-email-card")?.textContent.includes("Josh Carter"),
+          "Bishop overview shows weekly email coverage for all competing youth"
+        );
+        lastAlertMessage = "";
+        click(reloadedDoc.querySelector("[data-action='send-weekly-summary-preview']"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(lastAlertMessage.includes("Weekly progress email queued"), "Bishop can queue the weekly progress email");
         await openAdminView(reloadedDoc, "Review Goals");
         const bishopTitles = Array.from(reloadedDoc.querySelectorAll(".goal-title")).map((node) => node.textContent);
         assert(bishopTitles.includes("Temple Family History Goal"), "Bishop can see youth goals across both organizations in the ward");
@@ -900,6 +1059,63 @@
         await openAdminView(reloadedDoc, "Create Youth Account");
         const bishopOrgSelect = reloadedDoc.querySelector("#createYouthAccountForm select[name='youthOrganization']");
         assert(bishopOrgSelect.options.length === 2, "Bishop can create youth accounts in both organizations");
+        await openAdminView(reloadedDoc, "Required Level Goals");
+        assert(Boolean(reloadedDoc.getElementById("createRequiredLevelGoalForm")), "Bishop can open required level goal management");
+        const bookOfMormonRequiredGoalCard = Array.from(reloadedDoc.querySelectorAll(".required-goal-card")).find((card) =>
+          card.textContent.includes("Read the Book of Mormon")
+        );
+        assert(
+          Boolean(bookOfMormonRequiredGoalCard) &&
+          bookOfMormonRequiredGoalCard.querySelector("input[name='editRequiredGoalDeadlineDays']").value === "365" &&
+          bookOfMormonRequiredGoalCard.querySelectorAll("input[name='editableSubGoalRepeatCount']").length === 239 &&
+          bookOfMormonRequiredGoalCard.querySelector("input[name='editableSubGoalTitle']").value === "1 Nephi 1" &&
+          Array.from(bookOfMormonRequiredGoalCard.querySelectorAll("input[name='editableSubGoalTitle']")).at(-1).value === "Moroni 10",
+          "Level 1 Book of Mormon required goal is seeded with 239 chapter-labeled checkboxes"
+        );
+        lastAlertMessage = "";
+        click(reloadedDoc.querySelector("[data-action='backfill-required-goals']"));
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        assert(lastAlertMessage.includes("Assigned"), "Bishop can backfill required goals to current youth");
+        await openAdminView(reloadedDoc, "Review Goals");
+        const assignedRequiredGoalCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.textContent.includes("Read the Book of Mormon") && card.classList.contains("is-required-goal")
+        );
+        assert(
+          Boolean(assignedRequiredGoalCard) &&
+          assignedRequiredGoalCard.textContent.includes("Required Level 1"),
+          "Assigned required goals are visually identifiable in the goal review UI"
+        );
+        await openAdminView(reloadedDoc, "Required Level Goals");
+        const requiredGoalForm = reloadedDoc.getElementById("createRequiredLevelGoalForm");
+        requiredGoalForm.elements.requiredGoalLevel.value = "1";
+        requiredGoalForm.elements.requiredGoalTitle.value = "Bishop Interview Requirement";
+        requiredGoalForm.elements.requiredGoalSummary.value = "Meet with the bishop before completing level one.";
+        requiredGoalForm.elements.requiredGoalPoints.value = "10";
+        requiredGoalForm.elements.requiredGoalDeadlineDays.value = "14";
+        requiredGoalForm.elements.newSubGoalTitle.value = "Meet with the bishop";
+        requiredGoalForm.elements.newSubGoalRepeatCount.value = "1";
+        click(requiredGoalForm.querySelector("#addRequiredGoalChecklistItemButton"));
+        submit(requiredGoalForm);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(reloadedDoc.body.textContent.includes("Bishop Interview Requirement"), "Bishop can create a required level goal");
+
+        await openAdminView(reloadedDoc, "Create Youth Account");
+        const requiredYouthForm = reloadedDoc.getElementById("createYouthAccountForm");
+        requiredYouthForm.elements.youthName.value = "Required Goal Youth";
+        requiredYouthForm.elements.youthEmail.value = "required.goal.youth@example.com";
+        requiredYouthForm.elements.youthOrganization.value = "young_men";
+        requiredYouthForm.elements.youthPassword.value = "requiredpass";
+        submit(requiredYouthForm);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const requiredGoalYouthCard = Array.from(reloadedDoc.querySelectorAll(".managed-youth-card")).find((card) =>
+          card.textContent.includes("Required Goal Youth")
+        );
+        assert(
+          Boolean(requiredGoalYouthCard) &&
+          requiredGoalYouthCard.textContent.includes("Bishop Interview Requirement") &&
+          requiredGoalYouthCard.textContent.includes("Read the Book of Mormon"),
+          "New youth receives Level 1 required goals on entry"
+        );
 
         await openAdminView(reloadedDoc, "Ward Approval");
         const newLeaderAccessCard = Array.from(reloadedDoc.querySelectorAll(".access-review-card")).find((card) =>
