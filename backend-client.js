@@ -20,6 +20,26 @@
     return Math.floor(parsed);
   }
 
+  function normalizeDifficulty(value, fallbackPoints = 0) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (["easy", "medium", "hard"].includes(normalized)) {
+      return normalized;
+    }
+    const points = normalizePointValue(fallbackPoints);
+    if (points >= 90) {
+      return "hard";
+    }
+    if (points >= 50) {
+      return "medium";
+    }
+    return "easy";
+  }
+
+  function normalizeGoalCategory(value) {
+    const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+    return ["physical", "spiritual", "intellectual", "social"].includes(normalized) ? normalized : "spiritual";
+  }
+
 function mergeSnapshotProgressData(relationalState, snapshotState) {
     const nextState = clone(relationalState);
     const snapshotGoalsById = new Map((snapshotState?.goals || []).map((goal) => [goal.id, goal]));
@@ -30,6 +50,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       return {
         ...goal,
         points: normalizePointValue(snapshotGoal?.points ?? goal.points),
+        difficulty: normalizeDifficulty(snapshotGoal?.difficulty ?? goal.difficulty, snapshotGoal?.points ?? goal.points),
+        category: normalizeGoalCategory(snapshotGoal?.category ?? goal.category),
         priorityOrder: Number(snapshotGoal?.priorityOrder ?? goal.priorityOrder ?? 0),
         sourceTemplateId: snapshotGoal?.sourceTemplateId ?? goal.sourceTemplateId ?? null,
         sourceGoalId: snapshotGoal?.sourceGoalId ?? goal.sourceGoalId ?? null,
@@ -48,7 +70,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       const snapshotTemplate = snapshotTemplatesById.get(template.id);
       return {
         ...template,
-        points: normalizePointValue(snapshotTemplate?.points ?? template.points)
+        points: normalizePointValue(snapshotTemplate?.points ?? template.points),
+        difficulty: normalizeDifficulty(snapshotTemplate?.difficulty ?? template.difficulty, snapshotTemplate?.points ?? template.points),
+        category: normalizeGoalCategory(snapshotTemplate?.category ?? template.category)
       };
     });
 
@@ -65,6 +89,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       nextState.goals[goalIndex] = {
         ...nextState.goals[goalIndex],
         points: normalizePointValue(goal.points),
+        difficulty: normalizeDifficulty(goal.difficulty, goal.points),
+        category: normalizeGoalCategory(goal.category),
         priorityOrder: Number(goal.priorityOrder || 0),
         goalApproved: Boolean(goal.goalApproved),
         goalApprovedBy: goal.goalApprovedBy || null,
@@ -76,7 +102,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     } else if (options.insert) {
       nextState.goals.unshift({
         ...goal,
-        points: normalizePointValue(goal.points)
+        points: normalizePointValue(goal.points),
+        difficulty: normalizeDifficulty(goal.difficulty, goal.points),
+        category: normalizeGoalCategory(goal.category)
       });
     }
     return nextState;
@@ -88,12 +116,16 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     if (templateIndex >= 0) {
       nextState.templates[templateIndex] = {
         ...nextState.templates[templateIndex],
-        points: normalizePointValue(template.points)
+        points: normalizePointValue(template.points),
+        difficulty: normalizeDifficulty(template.difficulty, template.points),
+        category: normalizeGoalCategory(template.category)
       };
     } else if (options.insert) {
       nextState.templates.unshift({
         ...template,
-        points: normalizePointValue(template.points)
+        points: normalizePointValue(template.points),
+        difficulty: normalizeDifficulty(template.difficulty, template.points),
+        category: normalizeGoalCategory(template.category)
       });
     }
     return nextState;
@@ -391,6 +423,11 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       }
       return nextState;
     },
+    async updateLevelGoalRequirements(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      nextState.levelGoalRequirements = payload.levelGoalRequirements || [];
+      return nextState;
+    },
     async createRequiredLevelGoal(storageKey, appState, payload) {
       const nextState = clone(appState);
       nextState.requiredLevelGoals = [payload.requiredGoal, ...(nextState.requiredLevelGoals || [])];
@@ -558,7 +595,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           templatesResult,
           templateChecklistItemsResult,
           requiredGoalsResult,
-          requiredGoalChecklistItemsResult
+          requiredGoalChecklistItemsResult,
+          levelGoalRequirementsResult
         ] = await Promise.all([
           client.from("stakes").select("id, name"),
           client.from("wards").select("id, name, stake_id"),
@@ -569,8 +607,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           client.from("parent_youth_links").select("parent_id, youth_id, relationship"),
           client.from("goal_templates").select("*"),
           client.from("template_checklist_items").select("id, template_id, title, repeat_count, sort_order"),
-          client.from("required_level_goals").select("id, ward_id, level, title, summary, points, deadline_days, created_by"),
-          client.from("required_level_goal_checklist_items").select("id, required_goal_id, title, repeat_count, sort_order")
+          client.from("required_level_goals").select("id, ward_id, level, title, summary, points, difficulty, category, deadline_days, created_by"),
+          client.from("required_level_goal_checklist_items").select("id, required_goal_id, title, repeat_count, sort_order"),
+          client.from("level_goal_requirements").select("level, category, easy_required, medium_required, hard_required")
         ]);
 
         const firstError = [
@@ -584,7 +623,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           templatesResult.error,
           templateChecklistItemsResult.error,
           requiredGoalsResult.error,
-          requiredGoalChecklistItemsResult.error
+          requiredGoalChecklistItemsResult.error,
+          levelGoalRequirementsResult.error
         ].find(Boolean);
 
         if (firstError) {
@@ -602,6 +642,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         const templateChecklistItems = templateChecklistItemsResult.data || [];
         const requiredGoals = requiredGoalsResult.data || [];
         const requiredGoalChecklistItems = requiredGoalChecklistItemsResult.data || [];
+        const levelGoalRequirements = levelGoalRequirementsResult.data || [];
 
         const wardNamesById = new Map(wards.map((ward) => [ward.id, ward.name]));
         const stakesById = new Map(stakes.map((stake) => [stake.id, stake]));
@@ -641,6 +682,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             title: goal.title,
             summary: goal.summary,
             points: normalizePointValue(goal.points),
+            difficulty: normalizeDifficulty(goal.difficulty, goal.points),
+            category: normalizeGoalCategory(goal.category),
             priorityOrder: Number(goal.priority_order || 0),
             sourceTemplateId: goal.source_template_id || null,
             sourceGoalId: goal.source_goal_id || null,
@@ -660,8 +703,21 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             title: template.title,
             summary: template.summary,
             points: normalizePointValue(template.points),
+            difficulty: normalizeDifficulty(template.difficulty, template.points),
+            category: normalizeGoalCategory(template.category),
             subGoals: buildTemplateSubGoals(templateChecklistItems, template.id)
           })),
+          levelGoalRequirements: Object.values(levelGoalRequirements.reduce((byLevel, requirement) => {
+            const level = Number(requirement.level || 1);
+            const category = normalizeGoalCategory(requirement.category);
+            byLevel[level] = byLevel[level] || { level, categories: {} };
+            byLevel[level].categories[category] = {
+              easy: Number(requirement.easy_required || 0),
+              medium: Number(requirement.medium_required || 0),
+              hard: Number(requirement.hard_required || 0)
+            };
+            return byLevel;
+          }, {})),
           parentYouthLinks: parentYouthLinks.map((link) => ({
             parentId: link.parent_id,
             youthId: link.youth_id,
@@ -674,6 +730,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             title: goal.title,
             summary: goal.summary,
             points: normalizePointValue(goal.points),
+            difficulty: normalizeDifficulty(goal.difficulty, goal.points),
+            category: normalizeGoalCategory(goal.category),
             deadlineDays: Number(goal.deadline_days || 30),
             subGoals: buildRequiredGoalSubGoals(requiredGoalChecklistItems, goal.id)
           })),
@@ -705,6 +763,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           title: payload.goal.title,
           summary: payload.goal.summary,
           points: normalizePointValue(payload.goal.points),
+          difficulty: normalizeDifficulty(payload.goal.difficulty, payload.goal.points),
+          category: normalizeGoalCategory(payload.goal.category),
           priority_order: Number(payload.goal.priorityOrder || 0),
           required_goal_definition_id: payload.goal.requiredGoalDefinitionId || null,
           required_goal_level: payload.goal.requiredGoalLevel || null,
@@ -737,6 +797,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           title: payload.goal.title,
           summary: payload.goal.summary,
           points: normalizePointValue(payload.goal.points),
+          difficulty: normalizeDifficulty(payload.goal.difficulty, payload.goal.points),
+          category: normalizeGoalCategory(payload.goal.category),
           priority_order: Number(payload.goal.priorityOrder || 0),
           goal_approved: Boolean(payload.goal.goalApproved),
           goal_approved_by: goalApproverId,
@@ -769,6 +831,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           title: payload.template.title,
           summary: payload.template.summary,
           points: normalizePointValue(payload.template.points),
+          difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
+          category: normalizeGoalCategory(payload.template.category),
           created_by: payload.createdBy,
           ward_id: wardId
         });
@@ -791,7 +855,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         const templateResult = await client.from("goal_templates").update({
           title: payload.template.title,
           summary: payload.template.summary,
-          points: normalizePointValue(payload.template.points)
+          points: normalizePointValue(payload.template.points),
+          difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
+          category: normalizeGoalCategory(payload.template.category)
         }).eq("id", payload.template.id);
         if (templateResult.error) {
           throw templateResult.error;
@@ -802,6 +868,34 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       } catch (error) {
         console.warn("Supabase updateTemplate failed; falling back to snapshot bridge.", error);
         const nextState = await localStorageProvider.updateTemplate(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
+    },
+    async updateLevelGoalRequirements(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        for (const requirement of payload.levelGoalRequirements || []) {
+          const categories = requirement.categories || {};
+          for (const category of ["physical", "spiritual", "intellectual", "social"]) {
+            const categoryRequirement = categories[category] || {};
+            const result = await client.from("level_goal_requirements").upsert({
+              level: Number(requirement.level),
+              category,
+              easy_required: Number(categoryRequirement.easy || 0),
+              medium_required: Number(categoryRequirement.medium || 0),
+              hard_required: Number(categoryRequirement.hard || 0),
+              updated_by: payload.updatedBy || null
+            });
+            if (result.error) {
+              throw result.error;
+            }
+          }
+        }
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase updateLevelGoalRequirements failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.updateLevelGoalRequirements(storageKey, appState, payload);
         await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
         return nextState;
       }
@@ -818,6 +912,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           title: payload.requiredGoal.title,
           summary: payload.requiredGoal.summary,
           points: normalizePointValue(payload.requiredGoal.points),
+          difficulty: normalizeDifficulty(payload.requiredGoal.difficulty, payload.requiredGoal.points),
+          category: normalizeGoalCategory(payload.requiredGoal.category),
           deadline_days: payload.requiredGoal.deadlineDays,
           created_by: payload.createdBy
         });
@@ -841,6 +937,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           title: payload.requiredGoal.title,
           summary: payload.requiredGoal.summary,
           points: normalizePointValue(payload.requiredGoal.points),
+          difficulty: normalizeDifficulty(payload.requiredGoal.difficulty, payload.requiredGoal.points),
+          category: normalizeGoalCategory(payload.requiredGoal.category),
           deadline_days: payload.requiredGoal.deadlineDays
         }).eq("id", payload.requiredGoal.id);
         if (result.error) {
@@ -1008,6 +1106,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     },
     async updateTemplate(storageKey, appState, payload) {
       return (activeProvider.updateTemplate || localStorageProvider.updateTemplate)(storageKey, appState, payload);
+    },
+    async updateLevelGoalRequirements(storageKey, appState, payload) {
+      return (activeProvider.updateLevelGoalRequirements || localStorageProvider.updateLevelGoalRequirements)(storageKey, appState, payload);
     },
     async createRequiredLevelGoal(storageKey, appState, payload) {
       return (activeProvider.createRequiredLevelGoal || localStorageProvider.createRequiredLevelGoal)(storageKey, appState, payload);

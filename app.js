@@ -62,6 +62,65 @@ const storageAdapter = window.BishopGoalTrackerStorage || {
 };
 const isSupabaseRuntime = backendRuntime.runtimeMode === "supabase";
 const BOOTSTRAP_TIMEOUT_MS = 8000;
+const GOAL_DIFFICULTIES = {
+  easy: {
+    label: "Easy",
+    summary: "A focused goal with a smaller scope."
+  },
+  medium: {
+    label: "Medium",
+    summary: "A steady goal that takes meaningful effort."
+  },
+  hard: {
+    label: "Hard",
+    summary: "A demanding goal with a larger commitment."
+  }
+};
+const DIFFICULTY_ORDER = ["easy", "medium", "hard"];
+const GOAL_CATEGORIES = {
+  physical: {
+    label: "Physical"
+  },
+  spiritual: {
+    label: "Spiritual"
+  },
+  intellectual: {
+    label: "Intellectual"
+  },
+  social: {
+    label: "Social"
+  }
+};
+const CATEGORY_ORDER = ["physical", "spiritual", "intellectual", "social"];
+const DEFAULT_LEVEL_GOAL_REQUIREMENTS = [
+  {
+    level: 1,
+    categories: {
+      physical: { easy: 1, medium: 0, hard: 0 },
+      spiritual: { easy: 1, medium: 1, hard: 0 },
+      intellectual: { easy: 1, medium: 0, hard: 0 },
+      social: { easy: 1, medium: 0, hard: 0 }
+    }
+  },
+  {
+    level: 2,
+    categories: {
+      physical: { easy: 1, medium: 1, hard: 0 },
+      spiritual: { easy: 1, medium: 1, hard: 1 },
+      intellectual: { easy: 1, medium: 1, hard: 0 },
+      social: { easy: 1, medium: 1, hard: 0 }
+    }
+  },
+  {
+    level: 3,
+    categories: {
+      physical: { easy: 1, medium: 1, hard: 1 },
+      spiritual: { easy: 1, medium: 2, hard: 1 },
+      intellectual: { easy: 1, medium: 1, hard: 1 },
+      social: { easy: 1, medium: 1, hard: 1 }
+    }
+  }
+];
 const LEVEL_POINT_REQUIREMENTS = [100, 100, 100];
 const LEADERBOARD_PERIODS = {
   all: {
@@ -369,6 +428,7 @@ const firstRunState = {
       ]
     }
   ],
+  levelGoalRequirements: DEFAULT_LEVEL_GOAL_REQUIREMENTS,
   requiredLevelGoals: [
     {
       id: "required-bom-level1-mapleton",
@@ -377,6 +437,8 @@ const firstRunState = {
       title: "Read the Book of Mormon",
       summary: "Read the Book of Mormon in its entirety in less than one year.",
       points: 0,
+      difficulty: "hard",
+      category: "spiritual",
       deadlineDays: 365,
       subGoals: createBookOfMormonChapterChecklist("required-bom-level1-mapleton")
     },
@@ -387,6 +449,8 @@ const firstRunState = {
       title: "Read the Book of Mormon",
       summary: "Read the Book of Mormon in its entirety in less than one year.",
       points: 0,
+      difficulty: "hard",
+      category: "spiritual",
       deadlineDays: 365,
       subGoals: createBookOfMormonChapterChecklist("required-bom-level1-pocatello-creek")
     }
@@ -459,6 +523,7 @@ function createEmptyState() {
     users: [],
     goals: [],
     templates: [],
+    levelGoalRequirements: DEFAULT_LEVEL_GOAL_REQUIREMENTS,
     requiredLevelGoals: [],
     parentYouthLinks: [],
     notifications: [],
@@ -494,6 +559,9 @@ function mergeDemoSeedState(loadedState) {
   mergeById("goals");
   mergeById("templates");
   mergeById("requiredLevelGoals");
+  if (!loadedState.levelGoalRequirements?.length) {
+    loadedState.levelGoalRequirements = cloneDefaultLevelGoalRequirements();
+  }
   mergeById("stakes");
   mergeById("wards");
 
@@ -646,6 +714,8 @@ function normalizeState(rawState) {
     status: notification.status || "queued"
   })).filter((notification) => notification.userId && notification.message);
 
+  nextState.levelGoalRequirements = normalizeLevelGoalRequirements(nextState.levelGoalRequirements);
+
   nextState.goals = nextState.goals.map((goal, index) => {
     const points = normalizePointValue(goal.points);
     const completionApproved = Boolean(goal.leaderApproved);
@@ -657,6 +727,8 @@ function normalizeState(rawState) {
     return {
       ...goal,
       points,
+      difficulty: normalizeDifficulty(goal.difficulty, points),
+      category: normalizeGoalCategory(goal.category),
       priorityOrder: Number.isFinite(parsedPriority) ? parsedPriority : (index + 1) * 100,
       sourceTemplateId: goal.sourceTemplateId || goal.source_template_id || null,
       sourceGoalId: goal.sourceGoalId || goal.source_goal_id || null,
@@ -688,6 +760,8 @@ function normalizeState(rawState) {
   nextState.templates = (nextState.templates || []).map((template) => ({
     ...template,
     points: normalizePointValue(template.points),
+    difficulty: normalizeDifficulty(template.difficulty, template.points),
+    category: normalizeGoalCategory(template.category),
     subGoals: (template.subGoals || []).map((subGoal) => ({
       id: subGoal.id,
       title: subGoal.title,
@@ -702,6 +776,8 @@ function normalizeState(rawState) {
     title: String(goal.title || "").trim(),
     summary: String(goal.summary || "").trim(),
     points: normalizePointValue(goal.points),
+    difficulty: normalizeDifficulty(goal.difficulty, goal.points),
+    category: normalizeGoalCategory(goal.category),
     deadlineDays: Number.isFinite(Number(goal.deadlineDays)) ? Math.max(1, Number(goal.deadlineDays)) : 30,
     subGoals: (goal.subGoals || []).map((subGoal) => ({
       id: subGoal.id || createId("required-subgoal"),
@@ -899,6 +975,111 @@ function normalizePointValue(value) {
   return Math.floor(parsed);
 }
 
+function cloneDefaultLevelGoalRequirements() {
+  return DEFAULT_LEVEL_GOAL_REQUIREMENTS.map((requirement) => ({
+    level: requirement.level,
+    categories: cloneGoalCategoryMatrix(requirement.categories)
+  }));
+}
+
+function normalizeDifficulty(value, fallbackPoints = 0) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (GOAL_DIFFICULTIES[normalized]) {
+    return normalized;
+  }
+
+  const points = normalizePointValue(fallbackPoints);
+  if (points >= 90) {
+    return "hard";
+  }
+  if (points >= 50) {
+    return "medium";
+  }
+  return "easy";
+}
+
+function getDifficultyLabel(value) {
+  return GOAL_DIFFICULTIES[normalizeDifficulty(value)].label;
+}
+
+function normalizeGoalCategory(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+  return GOAL_CATEGORIES[normalized] ? normalized : "spiritual";
+}
+
+function getGoalCategoryLabel(value) {
+  return GOAL_CATEGORIES[normalizeGoalCategory(value)].label;
+}
+
+function buildCategoryOptions(selected = "spiritual") {
+  const normalizedSelected = normalizeGoalCategory(selected);
+  return CATEGORY_ORDER.map((category) =>
+    `<option value="${category}"${category === normalizedSelected ? " selected" : ""}>${GOAL_CATEGORIES[category].label}</option>`
+  ).join("");
+}
+
+function buildDifficultyOptions(selected = "medium") {
+  const normalizedSelected = normalizeDifficulty(selected);
+  return DIFFICULTY_ORDER.map((difficulty) =>
+    `<option value="${difficulty}"${difficulty === normalizedSelected ? " selected" : ""}>${GOAL_DIFFICULTIES[difficulty].label}</option>`
+  ).join("");
+}
+
+function cloneGoalCategoryMatrix(source = {}) {
+  return CATEGORY_ORDER.reduce((matrix, category) => {
+    const categorySource = source[category] || {};
+    matrix[category] = DIFFICULTY_ORDER.reduce((counts, difficulty) => {
+      counts[difficulty] = Math.max(0, Math.floor(Number(categorySource[difficulty] || 0)));
+      return counts;
+    }, {});
+    return matrix;
+  }, {});
+}
+
+function normalizeRequirementCounts(source = {}, fallback = {}) {
+  return DIFFICULTY_ORDER.reduce((counts, difficulty) => {
+    counts[difficulty] = Math.max(0, Math.floor(Number(source[difficulty] ?? fallback[difficulty] ?? 0) || 0));
+    return counts;
+  }, {});
+}
+
+function normalizeRequirementCategories(source = {}, fallback = {}) {
+  return CATEGORY_ORDER.reduce((categories, category) => {
+    categories[category] = normalizeRequirementCounts(source[category] || {}, fallback[category] || {});
+    return categories;
+  }, {});
+}
+
+function normalizeLevelGoalRequirements(requirements = []) {
+  const byLevel = new Map();
+  (requirements || []).forEach((requirement) => {
+    const level = Number(requirement.level);
+    if (!Number.isFinite(level)) {
+      return;
+    }
+    const existing = byLevel.get(level) || { level, categories: {} };
+    const sourceCategories = requirement.categories || CATEGORY_ORDER.reduce((categories, category) => {
+      categories[category] = requirement[category] || {};
+      return categories;
+    }, {});
+    if (!requirement.categories && DIFFICULTY_ORDER.some((difficulty) => requirement[difficulty] !== undefined)) {
+      sourceCategories.spiritual = requirement;
+    }
+    existing.categories = {
+      ...existing.categories,
+      ...sourceCategories
+    };
+    byLevel.set(level, existing);
+  });
+  return cloneDefaultLevelGoalRequirements().map((defaultRequirement) => {
+    const source = byLevel.get(defaultRequirement.level) || defaultRequirement;
+    return {
+      level: defaultRequirement.level,
+      categories: normalizeRequirementCategories(source.categories || {}, defaultRequirement.categories)
+    };
+  });
+}
+
 function addDays(dateString, days) {
   const base = new Date(`${dateString}T00:00:00`);
   base.setDate(base.getDate() + days);
@@ -1076,6 +1257,12 @@ function syncGoalFormFromTemplate(form, templateId) {
     if (form.elements.goalPoints) {
       form.elements.goalPoints.value = "0";
     }
+    if (form.elements.goalDifficulty) {
+      form.elements.goalDifficulty.value = "medium";
+    }
+    if (form.elements.goalCategory) {
+      form.elements.goalCategory.value = "spiritual";
+    }
     writeDraftChecklistItems(form, []);
     renderDraftChecklistItems(form);
     return;
@@ -1090,6 +1277,12 @@ function syncGoalFormFromTemplate(form, templateId) {
   form.elements.goalSummary.value = template.summary;
   if (form.elements.goalPoints) {
     form.elements.goalPoints.value = String(normalizePointValue(template.points));
+  }
+  if (form.elements.goalDifficulty) {
+    form.elements.goalDifficulty.value = normalizeDifficulty(template.difficulty, template.points);
+  }
+  if (form.elements.goalCategory) {
+    form.elements.goalCategory.value = normalizeGoalCategory(template.category);
   }
   writeDraftChecklistItems(form, template.subGoals.map((subGoal) => ({
     title: subGoal.title,
@@ -1158,6 +1351,8 @@ function buildGoalFromTemplate(template, userId, deadline = getDefaultGoalDeadli
     title: template.title,
     summary: template.summary,
     points: normalizePointValue(template.points),
+    difficulty: normalizeDifficulty(template.difficulty, template.points),
+    category: normalizeGoalCategory(template.category),
     priorityOrder: getNextGoalPriority(userId),
     sourceTemplateId: template.id,
     sourceGoalId: null,
@@ -1191,6 +1386,8 @@ function buildGoalFromRequiredLevelGoal(requiredGoal, youth) {
     title: requiredGoal.title,
     summary: requiredGoal.summary,
     points: normalizePointValue(requiredGoal.points),
+    difficulty: normalizeDifficulty(requiredGoal.difficulty, requiredGoal.points),
+    category: normalizeGoalCategory(requiredGoal.category),
     priorityOrder: getNextGoalPriority(youth.id),
     sourceTemplateId: null,
     sourceGoalId: null,
@@ -1243,10 +1440,10 @@ function getRequiredGoalCompletionForYouthLevel(youth, level) {
 }
 
 function getYouthCompletedAttainmentLevels(youth) {
-  const earnedPoints = getYouthEarnedPoints(youth.id);
-  const milestones = getLevelPointMilestones();
+  const difficultyCounts = getYouthDifficultyCounts(youth.id);
+  const milestones = getLevelGoalMilestones();
   return milestones.filter((level) =>
-    earnedPoints >= level.threshold &&
+    isDifficultyRequirementMet(difficultyCounts, level.requirements) &&
     getRequiredGoalCompletionForYouthLevel(youth, level.index).complete
   ).length;
 }
@@ -1286,6 +1483,8 @@ function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline &&
     title: sourceGoal.title,
     summary: sourceGoal.summary,
     points: normalizePointValue(sourceGoal.points),
+    difficulty: normalizeDifficulty(sourceGoal.difficulty, sourceGoal.points),
+    category: normalizeGoalCategory(sourceGoal.category),
     priorityOrder: getNextGoalPriority(userId),
     sourceTemplateId: sourceGoal.sourceTemplateId || null,
     sourceGoalId: sourceGoal.id,
@@ -1316,6 +1515,8 @@ async function saveGoalAsTemplate(goalId) {
     title: goal.title,
     summary: goal.summary,
     points: normalizePointValue(goal.points),
+    difficulty: normalizeDifficulty(goal.difficulty, goal.points),
+    category: normalizeGoalCategory(goal.category),
     subGoals: goal.subGoals.map((subGoal) => ({
       id: createId("template-subgoal"),
       title: subGoal.title,
@@ -1360,7 +1561,8 @@ async function updateGoalDetails(goalId, form) {
 
   const title = form.elements.editGoalTitle.value.trim();
   const summary = form.elements.editGoalSummary.value.trim();
-  const points = normalizePointValue(form.elements.editGoalPoints.value);
+  const difficulty = normalizeDifficulty(form.elements.editGoalDifficulty?.value || goal.difficulty, goal.points);
+  const category = normalizeGoalCategory(form.elements.editGoalCategory?.value || goal.category);
   const deadline = form.elements.editGoalDeadline.value;
   if (!title || !summary || !deadline) {
     window.alert("Please provide a goal title, summary, and deadline.");
@@ -1382,10 +1584,11 @@ async function updateGoalDetails(goalId, form) {
 
   goal.title = title;
   goal.summary = summary;
-  goal.points = points;
+  goal.difficulty = difficulty;
+  goal.category = category;
   goal.deadline = deadline;
   goal.subGoals = subGoals;
-  approveGoalPlanFields(goal, getSessionUser(), points);
+  approveGoalPlanFields(goal, getSessionUser(), difficulty, category);
   if (getGoalProgress(goal) < 100) {
     resetCompletionApproval(goal);
   }
@@ -1400,7 +1603,8 @@ async function updateTemplateDetails(templateId, form) {
 
   const title = form.elements.editTemplateTitle.value.trim();
   const summary = form.elements.editTemplateSummary.value.trim();
-  const points = normalizePointValue(form.elements.editTemplatePoints.value);
+  const difficulty = normalizeDifficulty(form.elements.editTemplateDifficulty?.value || template.difficulty, template.points);
+  const category = normalizeGoalCategory(form.elements.editTemplateCategory?.value || template.category);
   const subGoals = Array.from(form.querySelectorAll(".editable-subgoal-row")).map((row, index) => ({
     id: template.subGoals[index]?.id || createId("template-subgoal"),
     title: row.querySelector("[name='editableSubGoalTitle']").value.trim(),
@@ -1414,7 +1618,8 @@ async function updateTemplateDetails(templateId, form) {
 
   template.title = title;
   template.summary = summary;
-  template.points = points;
+  template.difficulty = difficulty;
+  template.category = category;
   template.subGoals = subGoals;
   activeTemplateId = null;
   await persistTemplate(template);
@@ -1461,33 +1666,93 @@ function getGoalProgress(goal) {
   return totalChecks ? Math.round((completedChecks / totalChecks) * 100) : 0;
 }
 
-function getEarnedGoalPoints(goal, periodRange = null) {
-  if (!goal.goalApproved || !goal.leaderApproved) {
-    return 0;
-  }
-
-  if (periodRange && !isDateInsideRange(goal.completedAt, periodRange)) {
-    return 0;
-  }
-
-  return normalizePointValue(goal.points);
+function isGoalEarnedInRange(goal, periodRange = null) {
+  return Boolean(
+    goal.goalApproved &&
+    goal.leaderApproved &&
+    (!periodRange || isDateInsideRange(goal.completedAt, periodRange))
+  );
 }
 
-function getYouthEarnedPoints(userId, period = "all") {
+function getYouthDifficultyCounts(userId, period = "all") {
   const periodRange = getLeaderboardPeriodRange(period);
   return state.goals
-    .filter((goal) => goal.userId === userId)
-    .reduce((sum, goal) => sum + getEarnedGoalPoints(goal, periodRange), 0);
+    .filter((goal) => goal.userId === userId && isGoalEarnedInRange(goal, periodRange))
+    .reduce((counts, goal) => {
+      const category = normalizeGoalCategory(goal.category);
+      const difficulty = normalizeDifficulty(goal.difficulty, goal.points);
+      counts.categories[category][difficulty] = (counts.categories[category][difficulty] || 0) + 1;
+      counts.categories[category].total += 1;
+      counts[difficulty] = (counts[difficulty] || 0) + 1;
+      counts.total += 1;
+      return counts;
+    }, {
+      easy: 0,
+      medium: 0,
+      hard: 0,
+      total: 0,
+      categories: CATEGORY_ORDER.reduce((categories, category) => {
+        categories[category] = { easy: 0, medium: 0, hard: 0, total: 0 };
+        return categories;
+      }, {})
+    });
 }
 
-function getLevelPointMilestones() {
-  let runningTotal = 0;
-  return LEVEL_POINT_REQUIREMENTS.map((points, index) => {
-    runningTotal += points;
+function getLevelGoalRequirements() {
+  return normalizeLevelGoalRequirements(state.levelGoalRequirements);
+}
+
+function getRequirementTotal(requirement) {
+  return CATEGORY_ORDER.reduce((categorySum, category) =>
+    categorySum + DIFFICULTY_ORDER.reduce((difficultySum, difficulty) =>
+      difficultySum + Number(requirement.categories?.[category]?.[difficulty] || 0),
+    0),
+  0);
+}
+
+function isDifficultyRequirementMet(counts, requirement) {
+  return CATEGORY_ORDER.every((category) =>
+    DIFFICULTY_ORDER.every((difficulty) =>
+      Number(counts.categories?.[category]?.[difficulty] || 0) >= Number(requirement.categories?.[category]?.[difficulty] || 0)
+    )
+  );
+}
+
+function getCompletedDifficultyRequirementCount(counts, requirement) {
+  return CATEGORY_ORDER.reduce((categorySum, category) =>
+    categorySum + DIFFICULTY_ORDER.reduce((difficultySum, difficulty) =>
+      difficultySum + Math.min(
+        Number(counts.categories?.[category]?.[difficulty] || 0),
+        Number(requirement.categories?.[category]?.[difficulty] || 0)
+      ),
+    0),
+  0);
+}
+
+function formatDifficultyRequirementProgress(counts, requirement) {
+  const requiredParts = CATEGORY_ORDER.map((category) => {
+    const parts = DIFFICULTY_ORDER
+      .filter((difficulty) => Number(requirement.categories?.[category]?.[difficulty] || 0) > 0)
+      .map((difficulty) =>
+        `${getDifficultyLabel(difficulty)} ${Math.min(Number(counts.categories?.[category]?.[difficulty] || 0), Number(requirement.categories?.[category]?.[difficulty] || 0))}/${Number(requirement.categories?.[category]?.[difficulty] || 0)}`
+      );
+    return parts.length ? `${GOAL_CATEGORIES[category].label}: ${parts.join(", ")}` : "";
+  }).filter(Boolean);
+  return requiredParts.join(" | ") || "No category requirements";
+}
+
+function formatDifficultyCounts(counts) {
+  return CATEGORY_ORDER.map((category) => {
+    const categoryCounts = counts.categories?.[category] || {};
+    return `${GOAL_CATEGORIES[category].label} E${categoryCounts.easy || 0}/M${categoryCounts.medium || 0}/H${categoryCounts.hard || 0}`;
+  }).join(" | ");
+}
+
+function getLevelGoalMilestones() {
+  return getLevelGoalRequirements().map((requirement) => {
     return {
-      index: index + 1,
-      points,
-      threshold: runningTotal
+      index: requirement.level,
+      requirements: requirement
     };
   });
 }
@@ -1497,29 +1762,28 @@ function getAwardNamesForYouth(sessionUser) {
 }
 
 function getYouthLevelProgress(youth, period = "all") {
-  const earnedPoints = getYouthEarnedPoints(youth.id, period);
-  const milestones = getLevelPointMilestones();
+  const difficultyCounts = getYouthDifficultyCounts(youth.id, period);
+  const milestones = getLevelGoalMilestones();
   const awardNames = getAwardNamesForYouth(youth);
   const completedLevels = period === "all"
     ? getYouthCompletedAttainmentLevels(youth)
-    : milestones.filter((level) => earnedPoints >= level.threshold).length;
+    : milestones.filter((level) => isDifficultyRequirementMet(difficultyCounts, level.requirements)).length;
   const nextLevel = milestones[completedLevels] || null;
-  const previousThreshold = completedLevels > 0 ? milestones[completedLevels - 1].threshold : 0;
-  const pointsIntoNextLevel = nextLevel ? Math.max(0, earnedPoints - previousThreshold) : 0;
-  const pointsNeededForNextLevel = nextLevel ? nextLevel.points : 0;
+  const completedRequirementsForNextLevel = nextLevel ? getCompletedDifficultyRequirementCount(difficultyCounts, nextLevel.requirements) : difficultyCounts.total;
+  const requiredGoalsForNextLevel = nextLevel ? getRequirementTotal(nextLevel.requirements) : difficultyCounts.total;
   const requiredGoalProgress = nextLevel ? getRequiredGoalCompletionForYouthLevel(youth, nextLevel.index) : { requiredCount: 0, completedCount: 0, complete: true };
   const nextPercent = nextLevel
-    ? Math.max(0, Math.min(100, Math.round((pointsIntoNextLevel / pointsNeededForNextLevel) * 100)))
+    ? Math.max(0, Math.min(100, Math.round((completedRequirementsForNextLevel / requiredGoalsForNextLevel) * 100)))
     : 100;
 
   return {
-    earnedPoints,
+    difficultyCounts,
     completedLevels,
     currentLevelLabel: completedLevels > 0 ? `Level ${completedLevels}: ${awardNames[completedLevels - 1]}` : "Getting started",
     nextLevelLabel: nextLevel ? `Level ${nextLevel.index}: ${awardNames[nextLevel.index - 1]}` : "All levels complete",
-    pointsIntoNextLevel,
-    pointsNeededForNextLevel,
-    nextProgressLabel: nextLevel ? `${pointsIntoNextLevel}/${pointsNeededForNextLevel} pts` : `${earnedPoints} pts earned`,
+    completedRequirementsForNextLevel,
+    requiredGoalsForNextLevel,
+    nextProgressLabel: nextLevel ? formatDifficultyRequirementProgress(difficultyCounts, nextLevel.requirements) : `${difficultyCounts.total} goals completed`,
     requiredGoalProgress,
     nextPercent
   };
@@ -1533,7 +1797,9 @@ function buildYouthCompetitionRows(scopeYouth, currentYouthId, period = activeLe
       progress: getYouthLevelProgress(youth, period)
     }))
     .sort((left, right) =>
-      right.progress.earnedPoints - left.progress.earnedPoints ||
+      right.progress.difficultyCounts.hard - left.progress.difficultyCounts.hard ||
+      right.progress.difficultyCounts.medium - left.progress.difficultyCounts.medium ||
+      right.progress.difficultyCounts.easy - left.progress.difficultyCounts.easy ||
       left.youth.name.localeCompare(right.youth.name)
     );
 
@@ -1579,7 +1845,9 @@ function getYouthCompetitionData(sessionUser, period = activeLeaderboardPeriod) 
     .sort((left, right) =>
       right.bestGoalProgress.completedChecks - left.bestGoalProgress.completedChecks ||
       right.matchingGoals.length - left.matchingGoals.length ||
-      right.progress.earnedPoints - left.progress.earnedPoints ||
+      right.progress.difficultyCounts.hard - left.progress.difficultyCounts.hard ||
+      right.progress.difficultyCounts.medium - left.progress.difficultyCounts.medium ||
+      right.progress.difficultyCounts.easy - left.progress.difficultyCounts.easy ||
       left.youth.name.localeCompare(right.youth.name)
     );
 
@@ -1593,15 +1861,13 @@ function getYouthCompetitionData(sessionUser, period = activeLeaderboardPeriod) 
 function buildLeaderboardCard(title, subtitle, rows, sessionUser, period = activeLeaderboardPeriod) {
   const currentRow = rows.find((row) => row.isCurrentYouth);
   const visibleRows = rows.slice(0, 10);
-  const leaderPoints = rows[0]?.progress.earnedPoints || 0;
-  const pointsBehindLeader = Math.max(0, leaderPoints - (currentRow?.progress.earnedPoints || 0));
   const periodConfig = LEADERBOARD_PERIODS[period] || LEADERBOARD_PERIODS.all;
   const card = document.createElement("section");
   card.className = "form-card leaderboard-card";
   const currentSummary = sessionUser.competitionOptIn === false
     ? "You are non-competitive, so you are not ranked on this leaderboard."
     : currentRow
-      ? `You are rank ${currentRow.rank} of ${rows.length}. ${currentRow.rank > 10 ? "Your score is outside the top 10 right now. " : ""}${pointsBehindLeader ? `${pointsBehindLeader} points behind first place.` : "You are tied for the lead."}`
+      ? `You are rank ${currentRow.rank} of ${rows.length}. ${currentRow.rank > 10 ? "Your score is outside the top 10 right now." : "Goal difficulty counts determine the ranking."}`
       : "No ranking available yet.";
   card.innerHTML = `
     <div class="panel-header">
@@ -1614,7 +1880,6 @@ function buildLeaderboardCard(title, subtitle, rows, sessionUser, period = activ
     </div>
     <div class="leaderboard-list">
       ${visibleRows.map((row) => {
-        const pointsAhead = Math.max(0, row.progress.earnedPoints - getYouthEarnedPoints(sessionUser.id, period));
         return `
           <div class="leaderboard-row${row.isCurrentYouth ? " is-current" : ""}">
             <span class="leaderboard-rank">#${row.rank}</span>
@@ -1623,8 +1888,8 @@ function buildLeaderboardCard(title, subtitle, rows, sessionUser, period = activ
               <span>${escapeHtml(row.youth.ward)} · ${escapeHtml(row.progress.currentLevelLabel)}</span>
             </div>
             <div class="leaderboard-points">
-              <strong>${row.progress.earnedPoints}</strong>
-              <span>${row.isCurrentYouth ? "your points" : pointsAhead ? `${pointsAhead} ahead` : "same points"}</span>
+              <strong>${row.progress.difficultyCounts.total}</strong>
+              <span>${formatDifficultyCounts(row.progress.difficultyCounts)}</span>
             </div>
           </div>
         `;
@@ -1651,7 +1916,7 @@ function buildSharedGoalsCard(sessionUser, sharedGoalRows) {
           <div class="shared-goal-row">
             <div>
               <strong>${escapeHtml(row.youth.name)}</strong>
-              <span>${escapeHtml(row.youth.ward)} · ${escapeHtml(row.progress.currentLevelLabel)} · ${row.progress.earnedPoints} pts</span>
+              <span>${escapeHtml(row.youth.ward)} · ${escapeHtml(row.progress.currentLevelLabel)} · ${formatDifficultyCounts(row.progress.difficultyCounts)}</span>
               <span>${row.bestGoalProgress.completedChecks}/${row.bestGoalProgress.totalChecks} same-goal checks · ${row.bestGoalProgress.progressPercent}% complete · ${row.bestGoalProgress.weeklyChecks} this week</span>
             </div>
             <div class="shared-goal-tags">
@@ -1813,7 +2078,7 @@ function buildCompetitionPreferenceCard(sessionUser) {
       <div>
         <p class="eyebrow">Competition Preference</p>
         <h3>${isCompetitive ? "Competitive" : "Non-Competitive"}</h3>
-        <p class="subgoal-meta">${isCompetitive ? "Your points and award level can appear on ward and stake leaderboards." : "Your points are private from leaderboard ranking. Your goals still track normally."}</p>
+        <p class="subgoal-meta">${isCompetitive ? "Your completed goal counts can appear on ward and stake leaderboards." : "Your completed goal counts are private from leaderboard ranking. Your goals still track normally."}</p>
       </div>
       <button class="${isCompetitive ? "ghost-button" : "secondary-button"}" type="button" data-action="toggle-competition">
         ${isCompetitive ? "Go Non-Competitive" : "Join Leaderboards"}
@@ -1878,7 +2143,7 @@ function formatProgressRowsForEmail(rows) {
   }
 
   return rows.slice(0, 10).map((row) =>
-    `#${row.rank} ${row.youth.name}: ${row.progress.earnedPoints} points, ${row.progress.currentLevelLabel}`
+    `#${row.rank} ${row.youth.name}: ${formatDifficultyCounts(row.progress.difficultyCounts)}, ${row.progress.currentLevelLabel}`
   ).join("\n");
 }
 
@@ -1981,11 +2246,11 @@ function buildWeeklyProgressEmailCard(sessionUser) {
       <div class="summary-comparison-grid">
         <div>
           <strong>This week</strong>
-          <p class="subgoal-meta">${weeklyRows.slice(0, 3).map((row) => `${row.rank}. ${escapeHtml(row.youth.name)} (${row.progress.earnedPoints} pts)`).join(" | ") || "No completed goals this week"}</p>
+          <p class="subgoal-meta">${weeklyRows.slice(0, 3).map((row) => `${row.rank}. ${escapeHtml(row.youth.name)} (${formatDifficultyCounts(row.progress.difficultyCounts)})`).join(" | ") || "No completed goals this week"}</p>
         </div>
         <div>
           <strong>This month</strong>
-          <p class="subgoal-meta">${monthlyRows.slice(0, 3).map((row) => `${row.rank}. ${escapeHtml(row.youth.name)} (${row.progress.earnedPoints} pts)`).join(" | ") || "No completed goals this month"}</p>
+          <p class="subgoal-meta">${monthlyRows.slice(0, 3).map((row) => `${row.rank}. ${escapeHtml(row.youth.name)} (${formatDifficultyCounts(row.progress.difficultyCounts)})`).join(" | ") || "No completed goals this month"}</p>
         </div>
       </div>
     </form>
@@ -2008,10 +2273,10 @@ function renderSessionProgressTracker(sessionUser) {
     return;
   }
 
-  const earnedPoints = getYouthEarnedPoints(sessionUser.id);
-  const milestones = getLevelPointMilestones();
+  const difficultyCounts = getYouthDifficultyCounts(sessionUser.id);
+  const milestones = getLevelGoalMilestones();
   const awardNames = getAwardNamesForYouth(sessionUser);
-  const currentLevel = milestones.find((level) => earnedPoints < level.threshold) || milestones[milestones.length - 1];
+  const currentLevel = milestones.find((level) => !isDifficultyRequirementMet(difficultyCounts, level.requirements)) || milestones[milestones.length - 1];
 
   elements.sessionProgressTracker.classList.remove("hidden");
   elements.sessionProgressTracker.innerHTML = `
@@ -2019,20 +2284,21 @@ function renderSessionProgressTracker(sessionUser) {
       <div>
         <p class="eyebrow">Overall Progress</p>
         <div class="sidebar-progress-total">
-          <strong>${earnedPoints} pts</strong>
+          <strong>${difficultyCounts.total} goals</strong>
           <span class="subgoal-meta">Current target: ${awardNames[currentLevel.index - 1]}</span>
         </div>
       </div>
       <div class="sidebar-progress-levels">
         ${milestones.map((level) => {
-          const pointsIntoLevel = Math.max(0, earnedPoints - (level.threshold - level.points));
-          const percent = Math.max(0, Math.min(100, Math.round((pointsIntoLevel / level.points) * 100)));
-          const complete = earnedPoints >= level.threshold;
+          const completedCount = getCompletedDifficultyRequirementCount(difficultyCounts, level.requirements);
+          const requiredCount = getRequirementTotal(level.requirements);
+          const percent = requiredCount ? Math.max(0, Math.min(100, Math.round((completedCount / requiredCount) * 100))) : 100;
+          const complete = isDifficultyRequirementMet(difficultyCounts, level.requirements);
           return `
             <div class="sidebar-progress-level${complete ? " is-complete" : ""}">
               <div class="sidebar-progress-level-head">
                 <strong>${awardNames[level.index - 1]}</strong>
-                <span class="subgoal-meta">${Math.min(pointsIntoLevel, level.points)}/${level.points} pts</span>
+                <span class="subgoal-meta">${formatDifficultyRequirementProgress(difficultyCounts, level.requirements)}</span>
               </div>
               <div class="sidebar-progress-bar">
                 <div class="sidebar-progress-fill" style="width:${percent}%"></div>
@@ -2041,13 +2307,14 @@ function renderSessionProgressTracker(sessionUser) {
           `;
         }).join("")}
       </div>
-      <p class="subgoal-meta">Points are awarded after a Youth leader or bishop approves both the goal plan and the completed goal.</p>
+      <p class="subgoal-meta">Goals count toward levels after a Youth leader or bishop approves both the goal plan and the completed goal.</p>
     </section>
   `;
 }
 
-function approveGoalPlanFields(goal, sessionUser, points = goal.points) {
-  goal.points = normalizePointValue(points);
+function approveGoalPlanFields(goal, sessionUser, difficulty = goal.difficulty, category = goal.category) {
+  goal.difficulty = normalizeDifficulty(difficulty, goal.points);
+  goal.category = normalizeGoalCategory(category);
   goal.goalApproved = true;
   goal.goalApprovedBy = sessionUser.name;
   goal.goalApprovedAt = getTodayDateString();
@@ -2600,7 +2867,7 @@ async function undoLatestSubGoalCompletion(goalId, subGoalId) {
   await persistGoal(goal);
 }
 
-async function approveGoalPlan(goalId, points) {
+async function approveGoalPlan(goalId, difficulty, category) {
   const sessionUser = getSessionUser();
   const goal = state.goals.find((item) => item.id === goalId);
 
@@ -2613,7 +2880,7 @@ async function approveGoalPlan(goalId, points) {
     return;
   }
 
-  approveGoalPlanFields(goal, sessionUser, points);
+  approveGoalPlanFields(goal, sessionUser, difficulty, category);
   await persistGoal(goal);
 }
 
@@ -2631,7 +2898,7 @@ async function approveGoal(goalId) {
   }
 
   if (!goal.goalApproved) {
-    window.alert("Approve the goal plan and assign points before completing final approval.");
+    window.alert("Approve the goal plan and assign a difficulty before completing final approval.");
     return;
   }
 
@@ -2671,6 +2938,8 @@ async function addGoal(event) {
   const form = event.currentTarget;
   const title = form.elements.goalTitle.value.trim();
   const summary = form.elements.goalSummary.value.trim();
+  const category = normalizeGoalCategory(form.elements.goalCategory?.value || "spiritual");
+  const difficulty = normalizeDifficulty(form.elements.goalDifficulty?.value || "medium");
   const deadline = form.elements.goalDeadline.value;
   const draftChecklistItems = readDraftChecklistItems(form);
 
@@ -2685,6 +2954,8 @@ async function addGoal(event) {
     title,
     summary,
     points: 0,
+    category,
+    difficulty,
     priorityOrder: getNextGoalPriority(sessionUser.id),
     goalApproved: false,
     goalApprovedBy: null,
@@ -2741,7 +3012,8 @@ async function createManagedGoal(event) {
   const targetYouth = state.users.find((user) => user.id === targetYouthId);
   const title = form.elements.goalTitle.value.trim();
   const summary = form.elements.goalSummary.value.trim();
-  const points = normalizePointValue(form.elements.goalPoints.value);
+  const difficulty = normalizeDifficulty(form.elements.goalDifficulty?.value || "medium");
+  const category = normalizeGoalCategory(form.elements.goalCategory?.value || "spiritual");
   const deadline = form.elements.goalDeadline.value;
   const draftChecklistItems = readDraftChecklistItems(form);
 
@@ -2755,7 +3027,9 @@ async function createManagedGoal(event) {
     userId: targetYouth.id,
     title,
     summary,
-    points,
+    points: 0,
+    difficulty,
+    category,
     priorityOrder: getNextGoalPriority(targetYouth.id),
     goalApproved: true,
     goalApprovedBy: sessionUser.name,
@@ -2825,7 +3099,9 @@ async function createTemplate(event) {
     id: createId("template"),
     title,
     summary,
-    points: normalizePointValue(form.elements.templatePoints.value),
+    points: normalizePointValue(form.elements.templatePoints?.value || 0),
+    difficulty: normalizeDifficulty(form.elements.templateDifficulty?.value || "medium", form.elements.templatePoints?.value || 0),
+    category: normalizeGoalCategory(form.elements.templateCategory?.value || "spiritual"),
     subGoals: draftChecklistItems.map((item) => ({
       id: createId("template-subgoal"),
       title: item.title,
@@ -3357,9 +3633,10 @@ function buildGoalCard(goal, mode) {
   const pointsRow = document.createElement("div");
   pointsRow.className = "goal-points-row";
   pointsRow.innerHTML = `
-    <span class="goal-points-badge">${normalizePointValue(goal.points)} pts</span>
+    <span class="goal-points-badge">${getGoalCategoryLabel(goal.category)}</span>
+    <span class="goal-points-badge">${getDifficultyLabel(goal.difficulty)}</span>
     ${requiredGoalLabel ? `<span class="required-goal-badge">${requiredGoalLabel}</span>` : ""}
-    <span class="subgoal-meta">${goal.leaderApproved ? "Awarded" : goal.goalApproved ? "Approved point value" : "Awaiting point approval"}</span>
+    <span class="subgoal-meta">${goal.leaderApproved ? "Completed and approved" : goal.goalApproved ? "Approved category and difficulty" : "Awaiting category and difficulty approval"}</span>
   `;
   actions.appendChild(pointsRow);
 
@@ -3465,7 +3742,7 @@ function buildGoalCard(goal, mode) {
   if (mode === "youth" && !goal.goalApproved) {
     const note = document.createElement("p");
     note.className = "leader-summary";
-    note.textContent = "This goal is waiting for a Youth leader or bishop to approve it and assign points before work begins.";
+    note.textContent = "This goal is waiting for a Youth leader or bishop to approve its difficulty before work begins.";
     actions.appendChild(note);
   } else if (mode === "youth" && goalClosed) {
     const note = document.createElement("p");
@@ -3505,7 +3782,7 @@ function buildGoalCard(goal, mode) {
       : goalClosed
         ? "This goal is closed because its deadline passed. Approve a new deadline to extend it."
         : !goal.goalApproved
-          ? "Review this goal, assign points, and approve it before the youth begins work."
+          ? "Review this goal, assign a category and difficulty, and approve it before the youth begins work."
           : progress === 100
             ? "Goal plan is approved. Review the completed work for final approval."
             : `Goal plan approved by ${goal.goalApprovedBy || "a leader"}${goal.goalApprovedAt ? ` on ${goal.goalApprovedAt}` : ""}. Waiting for the youth to finish every checklist item.`;
@@ -3517,14 +3794,18 @@ function buildGoalCard(goal, mode) {
       approvalForm.innerHTML = `
         <h4>Approve Goal Plan</h4>
         <label>
-          <span>Point value</span>
-          <input name="approvalPoints" type="number" min="0" step="1" value="${normalizePointValue(goal.points)}" required>
+          <span>Category</span>
+          <select name="approvalCategory">${buildCategoryOptions(goal.category)}</select>
+        </label>
+        <label>
+          <span>Difficulty</span>
+          <select name="approvalDifficulty">${buildDifficultyOptions(goal.difficulty)}</select>
         </label>
         <button class="primary-button" type="submit">Approve Goal Plan</button>
       `;
       approvalForm.addEventListener("submit", (event) => {
         event.preventDefault();
-        approveGoalPlan(goal.id, approvalForm.elements.approvalPoints.value);
+        approveGoalPlan(goal.id, approvalForm.elements.approvalDifficulty.value, approvalForm.elements.approvalCategory.value);
       });
       actions.appendChild(approvalForm);
     } else if (goalClosed) {
@@ -3610,8 +3891,12 @@ function buildGoalEditorOverlay(sessionUser) {
             <input name="editGoalTitle" type="text" value="${goal.title.replace(/"/g, "&quot;")}" required>
           </label>
           <label>
-            <span>Point value</span>
-            <input name="editGoalPoints" type="number" min="0" step="1" value="${normalizePointValue(goal.points)}" required>
+            <span>Category</span>
+            <select name="editGoalCategory">${buildCategoryOptions(goal.category)}</select>
+          </label>
+          <label>
+            <span>Difficulty</span>
+            <select name="editGoalDifficulty">${buildDifficultyOptions(goal.difficulty)}</select>
           </label>
           <label>
             <span>Deadline</span>
@@ -3699,7 +3984,7 @@ function buildGoalPriorityBoard(sessionUser, goals) {
       <span class="goal-priority-rank">${index + 1}</span>
       <div>
         <h4>${goal.title}</h4>
-        <p class="subgoal-meta">${progress}% complete &middot; ${normalizePointValue(goal.points)} pts &middot; ${getGoalStatus(goal).label}</p>
+        <p class="subgoal-meta">${progress}% complete &middot; ${getGoalCategoryLabel(goal.category)} &middot; ${getDifficultyLabel(goal.difficulty)} &middot; ${getGoalStatus(goal).label}</p>
       </div>
       <span class="goal-priority-handle" aria-hidden="true">Drag</span>
     `;
@@ -3775,10 +4060,18 @@ function renderUserDashboard(sessionUser) {
         <textarea name="goalSummary" placeholder="Describe what success looks like." required></textarea>
       </label>
       <label>
+        <span>Category</span>
+        <select name="goalCategory">${buildCategoryOptions("spiritual")}</select>
+      </label>
+      <label>
+        <span>Difficulty</span>
+        <select name="goalDifficulty">${buildDifficultyOptions("medium")}</select>
+      </label>
+      <label>
         <span>Deadline</span>
         <input name="goalDeadline" type="date" value="${getDefaultGoalDeadline()}" min="${getTodayDateString()}" required>
       </label>
-      <p class="subgoal-meta">A Youth leader or bishop can assign the point value after reviewing the goal.</p>
+      <p class="subgoal-meta">A Youth leader or bishop can adjust the category and difficulty after reviewing the goal.</p>
       <div class="draft-builder">
         <div class="draft-builder-grid">
           <label>
@@ -4317,8 +4610,12 @@ function buildTemplateWorkspace(template) {
         <textarea name="templateSummary" placeholder="Describe what this goal template is for." required></textarea>
       </label>
       <label>
-        <span>Default points</span>
-        <input name="templatePoints" type="number" min="0" step="1" value="0" required>
+        <span>Default category</span>
+        <select name="templateCategory">${buildCategoryOptions("spiritual")}</select>
+      </label>
+      <label>
+        <span>Default difficulty</span>
+        <select name="templateDifficulty">${buildDifficultyOptions("medium")}</select>
       </label>
       <div class="draft-builder">
         <div class="draft-builder-grid">
@@ -4356,8 +4653,12 @@ function buildTemplateWorkspace(template) {
         <textarea name="editTemplateSummary">${template.summary}</textarea>
       </label>
       <label>
-        <span>Default points</span>
-        <input name="editTemplatePoints" type="number" min="0" step="1" value="${normalizePointValue(template.points)}" required>
+        <span>Default category</span>
+        <select name="editTemplateCategory">${buildCategoryOptions(template.category)}</select>
+      </label>
+      <label>
+        <span>Default difficulty</span>
+        <select name="editTemplateDifficulty">${buildDifficultyOptions(template.difficulty)}</select>
       </label>
       <div class="editable-subgoal-list">
         ${buildEditableSubgoalRows(template.subGoals)}
@@ -4448,7 +4749,7 @@ function buildAdminDashboardNav(sessionUser, counts = {}) {
   ];
 
   if (sessionUser.role === "bishop") {
-    buttons.push(["required-goals", "Required Level Goals", "Bishop-only attainment goals"]);
+    buttons.push(["required-goals", "Required Goals & Levels", "Set required goals and counts"]);
     buttons.push(["ward-approval", "Ward Approval", `${counts.pendingLeaderCount || 0} leaders waiting`]);
   }
 
@@ -4525,7 +4826,7 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
             <span class="subgoal-meta">Current level</span>
             <strong>${escapeHtml(levelProgress.currentLevelLabel)}</strong>
           </div>
-          <span class="session-badge">${levelProgress.earnedPoints} pts</span>
+          <span class="session-badge">${levelProgress.difficultyCounts.total} goals</span>
         </div>
         <div class="youth-level-progress-next">
           <span class="subgoal-meta">Next: ${escapeHtml(levelProgress.nextLevelLabel)}</span>
@@ -4571,7 +4872,7 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
     card.querySelectorAll("[data-approve-card-goal-id]").forEach((button) => {
       button.addEventListener("click", () => {
         const pendingGoal = state.goals.find((item) => item.id === button.dataset.approveCardGoalId);
-        approveGoalPlan(button.dataset.approveCardGoalId, pendingGoal ? normalizePointValue(pendingGoal.points) : 0);
+        approveGoalPlan(button.dataset.approveCardGoalId, pendingGoal ? pendingGoal.difficulty : "medium");
       });
     });
     card.querySelectorAll("[data-edit-card-goal-id]").forEach((button) => {
@@ -4587,6 +4888,7 @@ function buildAdminSummaryCards(sessionUser, goals, managedYouth, approvedLeader
   const approvedCount = goals.filter((goal) => goal.leaderApproved).length;
   const readyCount = goals.filter((goal) => goal.goalApproved && getGoalProgress(goal) === 100 && !goal.leaderApproved).length;
   const pendingPlanCount = goals.filter((goal) => !goal.goalApproved).length;
+  const requiredGoalCount = (state.requiredLevelGoals || []).filter((goal) => isSameWard(goal.ward, sessionUser.ward)).length;
   const wrap = document.createElement("div");
   wrap.className = "admin-summary-grid";
   const wardCard = sessionUser.role === "bishop"
@@ -4597,6 +4899,13 @@ function buildAdminSummaryCards(sessionUser, goals, managedYouth, approvedLeader
         <strong>${approvedLeaders.length}</strong> approved Youth leaders
         <br>
         <strong>${pendingLeaders.length}</strong> Youth leaders waiting for bishop approval
+      </section>
+      <section class="leader-summary">
+        <strong>${requiredGoalCount}</strong> required level goals
+        <br>
+        <span>Set required goals and level counts by Physical, Spiritual, Intellectual, and Social.</span>
+        <br>
+        <button class="secondary-button" type="button" data-action="open-required-goals">Manage Required Goals</button>
       </section>
     `
     : "";
@@ -4610,6 +4919,7 @@ function buildAdminSummaryCards(sessionUser, goals, managedYouth, approvedLeader
       <strong>${pendingPlanCount}</strong> goals waiting for goal approval
     </section>
   `;
+  wrap.querySelector("[data-action='open-required-goals']")?.addEventListener("click", () => setActiveAdminDashboardView("required-goals"));
   return wrap;
 }
 
@@ -4647,8 +4957,12 @@ function buildManagedGoalForm(youthOptions, templateOptions) {
         <textarea name="goalSummary" placeholder="Describe what success looks like." required></textarea>
       </label>
       <label>
-        <span>Point value</span>
-        <input name="goalPoints" type="number" min="0" step="1" value="0" required>
+        <span>Category</span>
+        <select name="goalCategory">${buildCategoryOptions("spiritual")}</select>
+      </label>
+      <label>
+        <span>Difficulty</span>
+        <select name="goalDifficulty">${buildDifficultyOptions("medium")}</select>
       </label>
       <label>
         <span>Deadline</span>
@@ -4803,7 +5117,9 @@ async function createRequiredLevelGoal(event) {
     level: Number(form.elements.requiredGoalLevel.value),
     title: form.elements.requiredGoalTitle.value.trim(),
     summary: form.elements.requiredGoalSummary.value.trim(),
-    points: normalizePointValue(form.elements.requiredGoalPoints.value),
+    points: 0,
+    category: normalizeGoalCategory(form.elements.requiredGoalCategory?.value || "spiritual"),
+    difficulty: normalizeDifficulty(form.elements.requiredGoalDifficulty?.value || "medium"),
     deadlineDays: Math.max(1, Number(form.elements.requiredGoalDeadlineDays.value || 30)),
     subGoals: subGoals.map((item) => ({
       id: createId("required-subgoal"),
@@ -4858,7 +5174,9 @@ async function updateRequiredLevelGoal(requiredGoalId, form) {
   requiredGoal.level = Number(form.elements.editRequiredGoalLevel.value);
   requiredGoal.title = title;
   requiredGoal.summary = summary;
-  requiredGoal.points = normalizePointValue(form.elements.editRequiredGoalPoints.value);
+  requiredGoal.points = 0;
+  requiredGoal.category = normalizeGoalCategory(form.elements.editRequiredGoalCategory?.value || requiredGoal.category);
+  requiredGoal.difficulty = normalizeDifficulty(form.elements.editRequiredGoalDifficulty?.value || requiredGoal.difficulty);
   requiredGoal.deadlineDays = Math.max(1, Number(form.elements.editRequiredGoalDeadlineDays.value || 30));
   requiredGoal.subGoals = subGoals;
   const nextState = await backendClient.updateRequiredLevelGoal(STORAGE_KEY, state, {
@@ -4892,13 +5210,44 @@ function deleteRequiredLevelGoal(requiredGoalId) {
   });
 }
 
+async function updateLevelGoalRequirements(event) {
+  event.preventDefault();
+  const sessionUser = getSessionUser();
+  if (!sessionUser || sessionUser.role !== "bishop") {
+    return;
+  }
+
+  const form = event.currentTarget;
+  const levelGoalRequirements = getLevelGoalRequirements().map((requirement) => ({
+    level: requirement.level,
+    categories: CATEGORY_ORDER.reduce((categories, category) => {
+      categories[category] = DIFFICULTY_ORDER.reduce((counts, difficulty) => {
+        const fieldName = `level${requirement.level}${category}${difficulty}`;
+        counts[difficulty] = Math.max(0, Math.floor(Number(form.elements[fieldName]?.value || 0)));
+        return counts;
+      }, {});
+      return categories;
+    }, {})
+  }));
+  const nextState = backendClient.updateLevelGoalRequirements
+    ? await backendClient.updateLevelGoalRequirements(STORAGE_KEY, state, {
+      levelGoalRequirements,
+      updatedBy: sessionUser.id,
+      fallbackState: getFallbackState()
+    })
+    : { ...state, levelGoalRequirements };
+  state = normalizeState(nextState);
+  saveState();
+  render();
+}
+
 function buildRequiredLevelGoalsView(sessionUser) {
   const section = document.createElement("section");
   section.className = "admin-overview-section";
   const requiredGoals = (state.requiredLevelGoals || [])
     .filter((goal) => isSameWard(goal.ward, sessionUser.ward))
     .sort((left, right) => Number(left.level) - Number(right.level) || left.title.localeCompare(right.title));
-  const levelOptions = getLevelPointMilestones()
+  const levelOptions = getLevelGoalMilestones()
     .map((level) => `<option value="${level.index}">Level ${level.index}</option>`)
     .join("");
 
@@ -4906,8 +5255,8 @@ function buildRequiredLevelGoalsView(sessionUser) {
     <div class="panel-header">
       <div>
         <p class="eyebrow">Bishop Only</p>
-        <h3>Required Level Goals</h3>
-        <p class="subgoal-meta">Required goals are assigned when youth arrive at a level. Level attainment requires both the point threshold and these required goals.</p>
+        <h3>Required Goals & Level Requirements</h3>
+        <p class="subgoal-meta">Create required goals for each level and set how many Physical, Spiritual, Intellectual, and Social goals are needed by difficulty.</p>
       </div>
       <div class="admin-action-row">
         <button class="secondary-button" type="button" data-action="backfill-required-goals">Assign Missing To Current Youth</button>
@@ -4915,10 +5264,19 @@ function buildRequiredLevelGoalsView(sessionUser) {
       </div>
     </div>
     <form class="form-card inline-form" id="createRequiredLevelGoalForm">
-      <h3>Create required goal</h3>
+      <h3>Create Required Level Goal</h3>
+      <p class="subgoal-meta">These goals are automatically assigned to youth when they enter the selected level.</p>
       <label>
         <span>Level</span>
         <select name="requiredGoalLevel">${levelOptions}</select>
+      </label>
+      <label>
+        <span>Category</span>
+        <select name="requiredGoalCategory">${buildCategoryOptions("spiritual")}</select>
+      </label>
+      <label>
+        <span>Difficulty</span>
+        <select name="requiredGoalDifficulty">${buildDifficultyOptions("medium")}</select>
       </label>
       <label>
         <span>Goal title</span>
@@ -4927,10 +5285,6 @@ function buildRequiredLevelGoalsView(sessionUser) {
       <label>
         <span>Goal summary</span>
         <textarea name="requiredGoalSummary" placeholder="Describe the required goal." required></textarea>
-      </label>
-      <label>
-        <span>Point value</span>
-        <input name="requiredGoalPoints" type="number" min="0" step="1" value="0" required>
       </label>
       <label>
         <span>Days to complete after assignment</span>
@@ -4953,6 +5307,29 @@ function buildRequiredLevelGoalsView(sessionUser) {
       </div>
       <button class="primary-button" type="submit">Create Required Goal</button>
     </form>
+    <form class="form-card inline-form" id="levelGoalRequirementsForm">
+      <h3>Required Counts By Level</h3>
+      <p class="subgoal-meta">Set how many approved completed goals are required in each category and difficulty for each level. Required level goals are still separate.</p>
+      <div class="level-requirement-grid">
+        ${getLevelGoalRequirements().map((requirement) => `
+          <section class="level-requirement-card">
+            <h4>Level ${requirement.level}</h4>
+            ${CATEGORY_ORDER.map((category) => `
+              <div class="level-requirement-category">
+                <strong>${GOAL_CATEGORIES[category].label}</strong>
+                ${DIFFICULTY_ORDER.map((difficulty) => `
+                  <label>
+                    <span>${getDifficultyLabel(difficulty)}</span>
+                    <input name="level${requirement.level}${category}${difficulty}" type="number" min="0" step="1" value="${requirement.categories[category][difficulty]}">
+                  </label>
+                `).join("")}
+              </div>
+            `).join("")}
+          </section>
+        `).join("")}
+      </div>
+      <button class="primary-button" type="submit">Save Level Requirements</button>
+    </form>
     <div class="required-goal-list">
       ${requiredGoals.map((goal) => `
         <form class="form-card inline-form required-goal-card" data-required-goal-id="${goal.id}">
@@ -4961,13 +5338,21 @@ function buildRequiredLevelGoalsView(sessionUser) {
               <p class="eyebrow">Level ${goal.level}</p>
               <h3>${escapeHtml(goal.title)}</h3>
             </div>
-            <div class="session-badge">${goal.points} pts</div>
+            <div class="session-badge">Required</div>
           </div>
           <label>
             <span>Level</span>
             <select name="editRequiredGoalLevel">
-              ${getLevelPointMilestones().map((level) => `<option value="${level.index}"${Number(goal.level) === level.index ? " selected" : ""}>Level ${level.index}</option>`).join("")}
+              ${getLevelGoalMilestones().map((level) => `<option value="${level.index}"${Number(goal.level) === level.index ? " selected" : ""}>Level ${level.index}</option>`).join("")}
             </select>
+          </label>
+          <label>
+            <span>Category</span>
+            <select name="editRequiredGoalCategory">${buildCategoryOptions(goal.category)}</select>
+          </label>
+          <label>
+            <span>Difficulty</span>
+            <select name="editRequiredGoalDifficulty">${buildDifficultyOptions(goal.difficulty)}</select>
           </label>
           <label>
             <span>Goal title</span>
@@ -4976,10 +5361,6 @@ function buildRequiredLevelGoalsView(sessionUser) {
           <label>
             <span>Goal summary</span>
             <textarea name="editRequiredGoalSummary" required>${escapeHtml(goal.summary)}</textarea>
-          </label>
-          <label>
-            <span>Point value</span>
-            <input name="editRequiredGoalPoints" type="number" min="0" step="1" value="${goal.points}" required>
           </label>
           <label>
             <span>Days to complete after assignment</span>
@@ -4998,6 +5379,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
   `;
 
   const form = section.querySelector("#createRequiredLevelGoalForm");
+  section.querySelector("#levelGoalRequirementsForm").addEventListener("submit", updateLevelGoalRequirements);
   form.addEventListener("submit", createRequiredLevelGoal);
   form.querySelector("#addRequiredGoalChecklistItemButton").addEventListener("click", () => addDraftChecklistItem(form));
   renderDraftChecklistItems(form);
@@ -5135,8 +5517,12 @@ function buildCreateTemplateForm() {
         <textarea name="templateSummary" placeholder="Describe what this goal template is for." required></textarea>
       </label>
       <label>
-        <span>Default points</span>
-        <input name="templatePoints" type="number" min="0" step="1" value="0" required>
+        <span>Default category</span>
+        <select name="templateCategory">${buildCategoryOptions("spiritual")}</select>
+      </label>
+      <label>
+        <span>Default difficulty</span>
+        <select name="templateDifficulty">${buildDifficultyOptions("medium")}</select>
       </label>
       <div class="draft-builder">
         <div class="draft-builder-grid">

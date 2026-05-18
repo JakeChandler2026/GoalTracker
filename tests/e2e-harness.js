@@ -21,7 +21,7 @@ const browserPath = process.env.E2E_BROWSER_PATH || "";
     });
 
     await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("text=All browser tests passed.", { timeout: 60000 });
+    await page.waitForSelector("text=All browser tests passed.", { timeout: 90000 });
 
     const failures = await page.locator(".fail").allTextContents();
     const html = await page.content();

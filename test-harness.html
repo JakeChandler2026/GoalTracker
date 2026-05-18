@@ -251,11 +251,11 @@
         assert(progressTracker.textContent.includes("Iron Rod Award"), "Young Men level 1 award renders");
         assert(progressTracker.textContent.includes("Stripling Warrior Award"), "Young Men level 2 award renders");
         assert(progressTracker.textContent.includes("Helaman Leadership Award"), "Young Men level 3 award renders");
-        assert(progressTracker.textContent.includes("150 pts"), "Seeded youth progress appears in the account menu");
+        assert(progressTracker.textContent.includes("2 goals"), "Seeded youth progress appears in the account menu");
         assert(reloadedDoc.querySelectorAll(".goal-card").length >= 2, "User dashboard renders goals");
         assert(
-          Array.from(reloadedDoc.querySelectorAll(".goal-points-badge")).some((badge) => badge.textContent.includes("40")),
-          "Existing goal point values render on goal cards"
+          Array.from(reloadedDoc.querySelectorAll(".goal-points-badge")).some((badge) => badge.textContent.includes("Easy")),
+          "Existing goal difficulty values render on goal cards"
         );
         click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
           button.textContent.includes("Competition")
@@ -275,17 +275,21 @@
         await new Promise((resolve) => setTimeout(resolve, 150));
         assert(reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Goals approved this month"), "Leaderboard can filter rankings by month");
         assert(
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Maria Lopez") &&
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Spiritual E0/M0/H1") &&
           reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Josh Carter (You)") &&
-          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("150"),
-          "Month comparison shows Josh leading from seeded monthly progress"
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Spiritual E0/M2/H0"),
+          "Month comparison ranks competing youth by category difficulty counts"
         );
         click(Array.from(reloadedDoc.querySelectorAll("[data-leaderboard-period]")).find((button) => button.dataset.leaderboardPeriod === "week"));
         await new Promise((resolve) => setTimeout(resolve, 150));
         assert(reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Goals approved this week"), "Leaderboard can filter rankings by week");
         assert(
           reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Maria Lopez") &&
-          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("20 ahead"),
-          "Week comparison shows a competing youth ahead from seeded weekly progress"
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Spiritual E0/M0/H1") &&
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Josh Carter (You)") &&
+          reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Spiritual E0/M1/H0"),
+          "Week comparison shows a competing youth ahead from seeded category difficulty progress"
         );
         click(Array.from(reloadedDoc.querySelectorAll("[data-youth-view]")).find((button) =>
           button.textContent.includes("Existing Goals")
@@ -336,7 +340,7 @@
         assert(newestGoalCard.querySelector(".goal-status").textContent.includes("Pending goal approval"), "Youth-created goals wait for goal-plan approval");
         assert(
           Array.from(newestGoalCard.querySelectorAll(".checklist-track input[type='checkbox']")).every((checkbox) => checkbox.disabled),
-          "Youth cannot work a goal before point approval"
+          "Youth cannot work a goal before plan approval"
         );
 
         click(reloadedDoc.getElementById("logoutButton"));
@@ -355,7 +359,7 @@
         assert(Boolean(joshPendingOverviewCard), "Bishop overview includes youth-created pending goals");
         assert(
           joshPendingOverviewCard.querySelector(".youth-level-progress")?.textContent.includes("Current level") &&
-            joshPendingOverviewCard.querySelector(".youth-level-progress")?.textContent.includes("0/100 pts"),
+            joshPendingOverviewCard.querySelector(".youth-level-progress")?.textContent.includes("Spiritual: Easy 0/1, Medium 1/1"),
           "Youth progress card shows current level and progress toward the next level"
         );
         assert(
@@ -391,10 +395,11 @@
         assert(pocatelloGoalCards.length === 2, "Pocatello Creek sample youth has two sample goals");
         assert(
           pocatelloGoalCards.every((card) =>
-            card.querySelector(".goal-points-badge").textContent.includes("50") &&
+            card.textContent.includes("Spiritual") &&
+            card.textContent.includes("Medium") &&
             card.querySelector(".progress-value").textContent.includes("50%")
           ),
-          "Pocatello Creek sample goals are 50 points and 50 percent complete"
+          "Pocatello Creek sample goals are spiritual medium difficulty and 50 percent complete"
         );
         click(reloadedDoc.getElementById("logoutButton"));
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -430,7 +435,8 @@
           card.querySelector(".goal-title").textContent === "Scripture Study Goal"
         );
         assert(Boolean(leaderPlanCard), "Leader can see the newly created goal awaiting plan approval");
-        leaderPlanCard.querySelector("input[name='approvalPoints']").value = "80";
+        leaderPlanCard.querySelector("select[name='approvalCategory']").value = "spiritual";
+        leaderPlanCard.querySelector("select[name='approvalDifficulty']").value = "hard";
         submit(leaderPlanCard.querySelector("form"));
         await new Promise((resolve) => setTimeout(resolve, 250));
 
@@ -438,7 +444,7 @@
           card.querySelector(".goal-title").textContent === "Scripture Study Goal"
         );
         assert(leaderPlanCard.querySelector(".goal-status").textContent.includes("In progress"), "Goal-plan approval opens the goal for work");
-        assert(leaderPlanCard.querySelector(".goal-points-badge").textContent.includes("80"), "Goal-plan approval assigns the point value");
+        assert(leaderPlanCard.textContent.includes("Hard"), "Goal-plan approval assigns the difficulty");
 
         click(reloadedDoc.getElementById("logoutButton"));
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -477,7 +483,7 @@
           .find((option) => option.textContent.includes("Maria Lopez")).value;
         sameGoalForm.elements.goalTitle.value = "Scripture Study Goal";
         sameGoalForm.elements.goalSummary.value = "Same goal used to test pass-you email notifications.";
-        sameGoalForm.elements.goalPoints.value = "80";
+        sameGoalForm.elements.goalDifficulty.value = "hard";
         sameGoalForm.elements.newSubGoalTitle.value = "Read daily";
         sameGoalForm.elements.newSubGoalRepeatCount.value = "5";
         click(sameGoalForm.querySelector("#addManagedGoalChecklistItemButton"));
@@ -726,7 +732,8 @@
         reloadedDoc.querySelector("#createManagedGoalForm select[name='targetYouthId']").value = "u1";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='goalTitle']").value = "Leader Assigned Goal";
         reloadedDoc.querySelector("#createManagedGoalForm textarea[name='goalSummary']").value = "Assigned by a Youth leader.";
-        reloadedDoc.querySelector("#createManagedGoalForm input[name='goalPoints']").value = "75";
+        reloadedDoc.querySelector("#createManagedGoalForm select[name='goalCategory']").value = "social";
+        reloadedDoc.querySelector("#createManagedGoalForm select[name='goalDifficulty']").value = "hard";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='newSubGoalTitle']").value = "Attend planning meeting";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='newSubGoalRepeatCount']").value = "2";
         click(reloadedDoc.getElementById("addManagedGoalChecklistItemButton"));
@@ -737,12 +744,13 @@
           card.querySelector(".goal-title").textContent === "Leader Assigned Goal"
         );
         assert(Boolean(adminGoalCard), "Leader can create a goal directly for youth");
-        assert(adminGoalCard.querySelector(".goal-points-badge").textContent.includes("75"), "Leader-assigned points show on the goal");
+        assert(adminGoalCard.textContent.includes("Social") && adminGoalCard.textContent.includes("Hard"), "Leader-assigned category and difficulty show on the goal");
 
         editorOverlay = await openGoalEditor(reloadedDoc, adminGoalCard);
         editorOverlay.querySelector("input[name='editGoalTitle']").value = "Leader Assigned Goal Updated";
         editorOverlay.querySelector("textarea[name='editGoalSummary']").value = "Updated by a Youth leader.";
-        editorOverlay.querySelector("input[name='editGoalPoints']").value = "120";
+        editorOverlay.querySelector("select[name='editGoalCategory']").value = "intellectual";
+        editorOverlay.querySelector("select[name='editGoalDifficulty']").value = "easy";
         submit(editorOverlay.querySelector("form"));
         await new Promise((resolve) => setTimeout(resolve, 250));
 
@@ -750,7 +758,7 @@
           card.querySelector(".goal-title").textContent === "Leader Assigned Goal Updated"
         );
         assert(Boolean(adminGoalCard), "Leader can edit an existing youth goal");
-        assert(adminGoalCard.querySelector(".goal-points-badge").textContent.includes("120"), "Leader can update a goal's point value");
+        assert(adminGoalCard.textContent.includes("Intellectual") && adminGoalCard.textContent.includes("Easy"), "Leader can update a goal's category and difficulty");
         editorOverlay = await openGoalEditor(reloadedDoc, adminGoalCard);
         click(Array.from(editorOverlay.querySelectorAll("button")).find((button) => button.textContent.includes("Make Template")));
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -907,7 +915,8 @@
         assert(Boolean(inlineCreateTemplateForm), "Template screen has a Create New Template button that opens the creation form");
         inlineCreateTemplateForm.elements.templateTitle.value = "Template Screen Button Goal";
         inlineCreateTemplateForm.elements.templateSummary.value = "Created directly from the template editor screen.";
-        inlineCreateTemplateForm.elements.templatePoints.value = "25";
+        inlineCreateTemplateForm.elements.templateCategory.value = "intellectual";
+        inlineCreateTemplateForm.elements.templateDifficulty.value = "easy";
         inlineCreateTemplateForm.elements.newSubGoalTitle.value = "Finish the template-screen checklist";
         inlineCreateTemplateForm.elements.newSubGoalRepeatCount.value = "1";
         click(inlineCreateTemplateForm.querySelector("#addTemplateChecklistItemButton"));
@@ -1052,6 +1061,18 @@
         click(reloadedDoc.querySelector("[data-action='send-weekly-summary-preview']"));
         await new Promise((resolve) => setTimeout(resolve, 250));
         assert(lastAlertMessage.includes("Weekly progress email queued"), "Bishop can queue the weekly progress email");
+        assert(
+          reloadedDoc.body.textContent.includes("required level goals") &&
+          Boolean(reloadedDoc.querySelector("[data-action='open-required-goals']")),
+          "Bishop overview surfaces required goal management"
+        );
+        click(reloadedDoc.querySelector("[data-action='open-required-goals']"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert(
+          Boolean(reloadedDoc.getElementById("createRequiredLevelGoalForm")) &&
+          Boolean(reloadedDoc.getElementById("levelGoalRequirementsForm")),
+          "Bishop overview shortcut opens required goals and level requirements"
+        );
         await openAdminView(reloadedDoc, "Review Goals");
         const bishopTitles = Array.from(reloadedDoc.querySelectorAll(".goal-title")).map((node) => node.textContent);
         assert(bishopTitles.includes("Temple Family History Goal"), "Bishop can see youth goals across both organizations in the ward");
@@ -1059,8 +1080,21 @@
         await openAdminView(reloadedDoc, "Create Youth Account");
         const bishopOrgSelect = reloadedDoc.querySelector("#createYouthAccountForm select[name='youthOrganization']");
         assert(bishopOrgSelect.options.length === 2, "Bishop can create youth accounts in both organizations");
-        await openAdminView(reloadedDoc, "Required Level Goals");
+        await openAdminView(reloadedDoc, "Required Goals & Levels");
         assert(Boolean(reloadedDoc.getElementById("createRequiredLevelGoalForm")), "Bishop can open required level goal management");
+        assert(
+          reloadedDoc.getElementById("createRequiredLevelGoalForm").textContent.includes("Create Required Level Goal") &&
+          Boolean(reloadedDoc.querySelector("select[name='requiredGoalCategory']")) &&
+          Boolean(reloadedDoc.querySelector("select[name='requiredGoalDifficulty']")),
+          "Required goal creation UI has level, category, and difficulty controls"
+        );
+        const levelRequirementsForm = reloadedDoc.getElementById("levelGoalRequirementsForm");
+        assert(
+          levelRequirementsForm.textContent.includes("Required Counts By Level") &&
+          ["Physical", "Spiritual", "Intellectual", "Social"].every((label) => levelRequirementsForm.textContent.includes(label)) &&
+          ["level1physicaleasy", "level1spiritualmedium", "level1intellectualhard", "level1socialeasy"].every((name) => Boolean(levelRequirementsForm.elements[name])),
+          "Level requirement UI exposes easy, medium, and hard counts for every category"
+        );
         const bookOfMormonRequiredGoalCard = Array.from(reloadedDoc.querySelectorAll(".required-goal-card")).find((card) =>
           card.textContent.includes("Read the Book of Mormon")
         );
@@ -1085,12 +1119,13 @@
           assignedRequiredGoalCard.textContent.includes("Required Level 1"),
           "Assigned required goals are visually identifiable in the goal review UI"
         );
-        await openAdminView(reloadedDoc, "Required Level Goals");
+        await openAdminView(reloadedDoc, "Required Goals & Levels");
         const requiredGoalForm = reloadedDoc.getElementById("createRequiredLevelGoalForm");
         requiredGoalForm.elements.requiredGoalLevel.value = "1";
+        requiredGoalForm.elements.requiredGoalCategory.value = "spiritual";
+        requiredGoalForm.elements.requiredGoalDifficulty.value = "medium";
         requiredGoalForm.elements.requiredGoalTitle.value = "Bishop Interview Requirement";
         requiredGoalForm.elements.requiredGoalSummary.value = "Meet with the bishop before completing level one.";
-        requiredGoalForm.elements.requiredGoalPoints.value = "10";
         requiredGoalForm.elements.requiredGoalDeadlineDays.value = "14";
         requiredGoalForm.elements.newSubGoalTitle.value = "Meet with the bishop";
         requiredGoalForm.elements.newSubGoalRepeatCount.value = "1";
