@@ -903,6 +903,19 @@ button:hover {
   gap: 10px;
 }
 
+.template-list-category {
+  display: grid;
+  gap: 8px;
+}
+
+.template-list-category h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .template-list-item {
   display: grid;
   gap: 4px;

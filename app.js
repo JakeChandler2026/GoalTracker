@@ -1092,6 +1092,36 @@ function buildDifficultyOptions(selected = "medium") {
   ).join("");
 }
 
+function groupTemplatesByCategory(templates = []) {
+  return templates.reduce((groups, template) => {
+    const category = normalizeGoalCategory(template.category);
+    groups[category] = groups[category] || [];
+    groups[category].push(template);
+    return groups;
+  }, {});
+}
+
+function sortTemplatesByTitle(templates = []) {
+  return [...templates].sort((left, right) => String(left.title || "").localeCompare(String(right.title || "")));
+}
+
+function buildGroupedTemplateOptions(templates = [], selectedTemplateId = "") {
+  const groupedTemplates = groupTemplatesByCategory(templates);
+  return CATEGORY_ORDER.map((category) => {
+    const categoryTemplates = sortTemplatesByTitle(groupedTemplates[category] || []);
+    if (!categoryTemplates.length) {
+      return "";
+    }
+    return `
+      <optgroup label="${escapeHtml(GOAL_CATEGORIES[category].label)}">
+        ${categoryTemplates.map((template) => `
+          <option value="${escapeHtml(template.id)}"${template.id === selectedTemplateId ? " selected" : ""}>${escapeHtml(template.title)}</option>
+        `).join("")}
+      </optgroup>
+    `;
+  }).join("");
+}
+
 function cloneGoalCategoryMatrix(source = {}) {
   return CATEGORY_ORDER.reduce((matrix, category) => {
     const categorySource = source[category] || {};
@@ -4891,12 +4921,24 @@ function buildTemplateWorkspace(template) {
     : "";
   const card = document.createElement("section");
   card.className = "template-workspace";
-  const templateListMarkup = state.templates.map((item) => `
-    <button class="template-list-item${template && item.id === template.id ? " active" : ""}" type="button" data-template-id="${item.id}">
-      <strong>${escapeHtml(item.title)}</strong>
-      <span>${item.subGoals.length} checklist item${item.subGoals.length === 1 ? "" : "s"} - ${item.templateApproved === false ? "Pending review" : "Approved"}</span>
-    </button>
-  `).join("");
+  const groupedTemplates = groupTemplatesByCategory(state.templates);
+  const templateListMarkup = CATEGORY_ORDER.map((category) => {
+    const categoryTemplates = sortTemplatesByTitle(groupedTemplates[category] || []);
+    if (!categoryTemplates.length) {
+      return "";
+    }
+    return `
+      <div class="template-list-category">
+        <h4>${escapeHtml(GOAL_CATEGORIES[category].label)}</h4>
+        ${categoryTemplates.map((item) => `
+          <button class="template-list-item${template && item.id === template.id ? " active" : ""}" type="button" data-template-id="${item.id}">
+            <strong>${escapeHtml(item.title)}</strong>
+            <span>${item.subGoals.length} checklist item${item.subGoals.length === 1 ? "" : "s"} - ${item.templateApproved === false ? "Pending review" : "Approved"}</span>
+          </button>
+        `).join("")}
+      </div>
+    `;
+  }).join("");
   const createTemplateMarkup = `
     <form class="inline-form template-create-form" id="createTemplateForm">
       <div class="panel-header">
@@ -5997,8 +6039,7 @@ function renderLeaderDashboard(sessionUser) {
     .join("");
   const templateOptions = state.templates
     .filter((template) => template.templateApproved !== false)
-    .map((template) => `<option value="${template.id}">${template.title}</option>`)
-    .join("");
+  const groupedTemplateOptions = buildGroupedTemplateOptions(templateOptions);
 
   elements.dashboardTitle.textContent = sessionUser.role === "bishop" ? `${sessionUser.name}'s ward board` : `${sessionUser.name}'s youth board`;
   elements.leaderDashboard.innerHTML = "";
@@ -6013,7 +6054,7 @@ function renderLeaderDashboard(sessionUser) {
   }
 
   if (activeAdminDashboardView === "create-goal") {
-    elements.leaderDashboard.appendChild(buildManagedGoalForm(youthOptions, templateOptions));
+    elements.leaderDashboard.appendChild(buildManagedGoalForm(youthOptions, groupedTemplateOptions));
     return;
   }
 

@@ -746,8 +746,14 @@
         );
 
         await openAdminView(reloadedDoc, "Create Goal For Youth");
+        const managedTemplateSelect = reloadedDoc.querySelector("#createManagedGoalForm select[name='goalTemplateId']");
+        const managedTemplateGroups = Array.from(managedTemplateSelect.querySelectorAll("optgroup"));
         assert(
-          !Array.from(reloadedDoc.querySelector("#createManagedGoalForm select[name='goalTemplateId']").options).some((option) =>
+          managedTemplateGroups.some((group) => group.label === "Spiritual" && Array.from(group.querySelectorAll("option")).some((option) => option.textContent.includes("Daily Scripture Habit"))),
+          "Managed-goal template dropdown groups approved templates by category"
+        );
+        assert(
+          !Array.from(managedTemplateSelect.options).some((option) =>
             option.textContent.includes("Pending Service Template")
           ),
           "Pending templates are hidden from the managed-goal copy dropdown"
