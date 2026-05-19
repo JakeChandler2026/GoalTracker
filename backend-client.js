@@ -77,7 +77,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     });
 
     nextState.requiredLevelGoals = snapshotState?.requiredLevelGoals || nextState.requiredLevelGoals || [];
-    nextState.notifications = snapshotState?.notifications || nextState.notifications || [];
+    nextState.notifications = nextState.notifications?.length ? nextState.notifications : (snapshotState?.notifications || []);
 
     return nextState;
   }
@@ -472,6 +472,36 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       }
       return nextState;
     },
+    async updateNotificationPreferences(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      const userIndex = nextState.users.findIndex((user) => user.id === payload.user.id);
+      if (userIndex >= 0) {
+        nextState.users[userIndex] = payload.user;
+      }
+      return nextState;
+    },
+    async registerPushToken(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      const userIndex = nextState.users.findIndex((user) => user.id === payload.userId);
+      if (userIndex >= 0) {
+        nextState.users[userIndex] = {
+          ...nextState.users[userIndex],
+          pushToken: payload.token || nextState.users[userIndex].pushToken || ""
+        };
+      }
+      return nextState;
+    },
+    async recordUserActivity(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      const userIndex = nextState.users.findIndex((user) => user.id === payload.userId);
+      if (userIndex >= 0) {
+        nextState.users[userIndex] = {
+          ...nextState.users[userIndex],
+          lastActiveAt: new Date().toISOString()
+        };
+      }
+      return nextState;
+    },
     async updateParentYouthLinks(storageKey, appState, payload) {
       const nextState = clone(appState);
       const parentIndex = nextState.users.findIndex((user) => user.id === payload.parent.id);
@@ -596,11 +626,14 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           templateChecklistItemsResult,
           requiredGoalsResult,
           requiredGoalChecklistItemsResult,
-          levelGoalRequirementsResult
+          levelGoalRequirementsResult,
+          notificationPreferencesResult,
+          pushTokensResult,
+          notificationsResult
         ] = await Promise.all([
           client.from("stakes").select("id, name"),
           client.from("wards").select("id, name, stake_id"),
-          client.from("profiles").select("id, auth_user_id, email, full_name, role, organization, approval_status, ward_id, competition_opt_in"),
+          client.from("profiles").select("id, auth_user_id, email, full_name, role, organization, approval_status, ward_id, competition_opt_in, last_active_at"),
           client.from("goals").select("*"),
           client.from("goal_checklist_items").select("id, goal_id, title, repeat_count, sort_order"),
           client.from("goal_checklist_units").select("checklist_item_id, unit_index, completed_at"),
@@ -609,7 +642,10 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           client.from("template_checklist_items").select("id, template_id, title, repeat_count, sort_order"),
           client.from("required_level_goals").select("id, ward_id, level, title, summary, points, difficulty, category, deadline_days, created_by"),
           client.from("required_level_goal_checklist_items").select("id, required_goal_id, title, repeat_count, sort_order"),
-          client.from("level_goal_requirements").select("level, category, easy_required, medium_required, hard_required")
+          client.from("level_goal_requirements").select("level, category, easy_required, medium_required, hard_required"),
+          client.from("notification_preferences").select("*"),
+          client.from("user_push_tokens").select("profile_id, token, enabled, last_seen_at").eq("enabled", true),
+          client.from("notifications").select("*").order("created_at", { ascending: false }).limit(100)
         ]);
 
         const firstError = [
@@ -624,7 +660,10 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           templateChecklistItemsResult.error,
           requiredGoalsResult.error,
           requiredGoalChecklistItemsResult.error,
-          levelGoalRequirementsResult.error
+          levelGoalRequirementsResult.error,
+          notificationPreferencesResult.error,
+          pushTokensResult.error,
+          notificationsResult.error
         ].find(Boolean);
 
         if (firstError) {
@@ -643,10 +682,15 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         const requiredGoals = requiredGoalsResult.data || [];
         const requiredGoalChecklistItems = requiredGoalChecklistItemsResult.data || [];
         const levelGoalRequirements = levelGoalRequirementsResult.data || [];
+        const notificationPreferences = notificationPreferencesResult.data || [];
+        const pushTokens = pushTokensResult.data || [];
+        const notifications = notificationsResult.data || [];
 
         const wardNamesById = new Map(wards.map((ward) => [ward.id, ward.name]));
         const stakesById = new Map(stakes.map((stake) => [stake.id, stake]));
         const profileNamesById = new Map(profiles.map((profile) => [profile.id, profile.full_name]));
+        const notificationPreferencesByProfileId = new Map(notificationPreferences.map((preference) => [preference.profile_id, preference]));
+        const pushTokenByProfileId = new Map(pushTokens.map((token) => [token.profile_id, token.token]));
 
         const relationalState = {
           stakes: stakes.map((stake) => ({
@@ -662,20 +706,42 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
               stakeName: stake?.name || ""
             };
           }),
-          users: profiles.map((profile) => ({
-            id: profile.id,
-            role: profile.role,
-            email: profile.email,
-            password: "",
-            name: profile.full_name,
-            ward: wardNamesById.get(profile.ward_id) || "",
-            organization: profile.role === "bishop" || profile.role === "parent" || profile.role === "administrator" ? "all" : profile.organization,
-            competitionOptIn: profile.role === "youth" ? profile.competition_opt_in !== false : false,
-            approvalStatus: profile.approval_status,
-            loginStatus: (profile.role === "youth" || profile.role === "parent") && !profile.auth_user_id
-              ? (profile.email ? "invitation_ready" : "not_invited")
-              : "verified"
-          })),
+          users: profiles.map((profile) => {
+            const preference = notificationPreferencesByProfileId.get(profile.id) || {};
+            return {
+              id: profile.id,
+              role: profile.role,
+              email: profile.email,
+              password: "",
+              name: profile.full_name,
+              ward: wardNamesById.get(profile.ward_id) || "",
+              organization: profile.role === "bishop" || profile.role === "parent" || profile.role === "administrator" ? "all" : profile.organization,
+              competitionOptIn: profile.role === "youth" ? profile.competition_opt_in !== false : false,
+              sameGoalNotificationsOptIn: profile.role === "youth"
+                ? Boolean(preference.same_goal_in_app || preference.same_goal_email || preference.same_goal_push)
+                : false,
+              notificationChannels: {
+                inApp: preference.same_goal_in_app !== false,
+                email: Boolean(preference.same_goal_email),
+                push: Boolean(preference.same_goal_push)
+              },
+              inactivityNotificationsOptIn: Boolean(preference.inactivity_reminders_enabled),
+              inactivityNotificationChannels: {
+                inApp: preference.inactivity_in_app !== false,
+                email: Boolean(preference.inactivity_email),
+                push: Boolean(preference.inactivity_push)
+              },
+              inactivityReminderMinHours: Number(preference.inactivity_min_hours || 24),
+              inactivityReminderMaxHours: Number(preference.inactivity_max_hours || 96),
+              nextInactivityReminderAt: preference.next_inactivity_reminder_at || null,
+              pushToken: pushTokenByProfileId.get(profile.id) || "",
+              lastActiveAt: profile.last_active_at || null,
+              approvalStatus: profile.approval_status,
+              loginStatus: (profile.role === "youth" || profile.role === "parent") && !profile.auth_user_id
+                ? (profile.email ? "invitation_ready" : "not_invited")
+                : "verified"
+            };
+          }),
           goals: goals.map((goal) => ({
             id: goal.id,
             userId: goal.youth_id,
@@ -735,7 +801,26 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             deadlineDays: Number(goal.deadline_days || 30),
             subGoals: buildRequiredGoalSubGoals(requiredGoalChecklistItems, goal.id)
           })),
-          notifications: [],
+          notifications: notifications.map((notification) => ({
+            id: notification.id,
+            userId: notification.recipient_id,
+            actorId: notification.actor_id || null,
+            actorName: notification.actor_id ? (profileNamesById.get(notification.actor_id) || "Another youth") : "Pathway to Christ",
+            goalId: notification.goal_id || null,
+            goalTitle: notification.goal_title || "Goal update",
+            type: notification.type || "same_goal_passed",
+            message: notification.message || "",
+            recipientEmail: notification.recipient_email || "",
+            pushToken: "",
+            createdAt: notification.created_at ? String(notification.created_at).slice(0, 10) : null,
+            readAt: notification.read_at ? String(notification.read_at).slice(0, 10) : null,
+            channels: {
+              inApp: notification.channels?.inApp !== false,
+              email: Boolean(notification.channels?.email),
+              push: Boolean(notification.channels?.push)
+            },
+            status: notification.status || "queued"
+          })),
           session: null
         };
         const snapshotState = await supabaseSnapshotProvider.loadAppState(storageKey, fallbackState);
@@ -1026,6 +1111,72 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         return nextState;
       }
     },
+    async updateNotificationPreferences(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const user = payload.user;
+        const result = await client.from("notification_preferences").upsert({
+          profile_id: user.id,
+          same_goal_in_app: user.notificationChannels?.inApp !== false,
+          same_goal_email: Boolean(user.notificationChannels?.email),
+          same_goal_push: Boolean(user.notificationChannels?.push),
+          inactivity_reminders_enabled: Boolean(user.inactivityNotificationsOptIn),
+          inactivity_in_app: user.inactivityNotificationChannels?.inApp !== false,
+          inactivity_email: Boolean(user.inactivityNotificationChannels?.email),
+          inactivity_push: Boolean(user.inactivityNotificationChannels?.push),
+          inactivity_min_hours: Number(user.inactivityReminderMinHours || 24),
+          inactivity_max_hours: Number(user.inactivityReminderMaxHours || 96),
+          updated_at: new Date().toISOString()
+        }).select("profile_id").single();
+        if (result.error) {
+          throw result.error;
+        }
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase updateNotificationPreferences failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.updateNotificationPreferences(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
+    },
+    async registerPushToken(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const result = await client.from("user_push_tokens").upsert({
+          profile_id: payload.userId,
+          provider: payload.provider || "expo",
+          token: payload.token,
+          device_label: payload.deviceLabel || null,
+          enabled: payload.enabled !== false,
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: "profile_id,token" }).select("id").single();
+        if (result.error) {
+          throw result.error;
+        }
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase registerPushToken failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.registerPushToken(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
+    },
+    async recordUserActivity(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const result = await client.rpc("touch_profile_activity", {
+          target_profile_id: payload.userId
+        });
+        if (result.error) {
+          throw result.error;
+        }
+        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+      } catch (error) {
+        console.warn("Supabase recordUserActivity failed; falling back to local activity update.", error);
+        return localStorageProvider.recordUserActivity(storageKey, appState, payload);
+      }
+    },
     async updateParentYouthLinks(storageKey, appState, payload) {
       const client = createSupabaseClient();
       await invokeAdminUserManagement(client, payload.unlink ? "unlink_youth_parent_link" : "upsert_youth_parent_link", {
@@ -1127,6 +1278,15 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     },
     async updateCompetitionPreference(storageKey, appState, payload) {
       return (activeProvider.updateCompetitionPreference || localStorageProvider.updateCompetitionPreference)(storageKey, appState, payload);
+    },
+    async updateNotificationPreferences(storageKey, appState, payload) {
+      return (activeProvider.updateNotificationPreferences || localStorageProvider.updateNotificationPreferences)(storageKey, appState, payload);
+    },
+    async registerPushToken(storageKey, appState, payload) {
+      return (activeProvider.registerPushToken || localStorageProvider.registerPushToken)(storageKey, appState, payload);
+    },
+    async recordUserActivity(storageKey, appState, payload) {
+      return (activeProvider.recordUserActivity || localStorageProvider.recordUserActivity)(storageKey, appState, payload);
     },
     async updateParentYouthLinks(storageKey, appState, payload) {
       return (activeProvider.updateParentYouthLinks || localStorageProvider.updateParentYouthLinks)(storageKey, appState, payload);

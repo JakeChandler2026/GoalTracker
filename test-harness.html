@@ -228,6 +228,7 @@
         await new Promise((resolve) => setTimeout(resolve, 150));
 
         click(reloadedDoc.getElementById("userTab"));
+        lastAlertMessage = "";
         reloadedDoc.getElementById("username").value = "josh@example.com";
         reloadedDoc.getElementById("password").value = "goal123";
         submit(reloadedDoc.getElementById("loginForm"));
@@ -264,13 +265,19 @@
         const leaderboardRangeButtons = Array.from(reloadedDoc.querySelectorAll("[data-leaderboard-period]"));
         assert(leaderboardRangeButtons.length === 3, "Leaderboard range selector renders all time, week, and month views");
         assert(reloadedDoc.body.textContent.includes("Same Goal Alerts"), "Youth can manage same-goal notification settings");
+        assert(reloadedDoc.body.textContent.includes("Inactivity Reminders"), "Youth can manage inactivity reminder settings");
+        assert(reloadedDoc.body.textContent.includes("random schedule between 24 and 96 hours"), "Inactivity reminder cadence is shown as a randomized 24-96 hour window");
         const notificationForm = reloadedDoc.querySelector(".same-goal-notification-form");
         notificationForm.elements.sameGoalNotificationsOptIn.checked = true;
         notificationForm.elements.sameGoalEmail.checked = true;
         notificationForm.elements.sameGoalPush.checked = true;
+        notificationForm.elements.inactivityNotificationsOptIn.checked = true;
+        notificationForm.elements.inactivityEmail.checked = true;
+        notificationForm.elements.inactivityPush.checked = true;
         submit(notificationForm);
         await new Promise((resolve) => setTimeout(resolve, 150));
         assert(reloadedDoc.body.textContent.includes("Notifications On"), "Youth can opt in to same-goal notifications");
+        assert(reloadedDoc.body.textContent.includes("Push delivery starts after the mobile app registers this device"), "Youth sees mobile push registration status before the app has a token");
         click(Array.from(reloadedDoc.querySelectorAll("[data-leaderboard-period]")).find((button) => button.dataset.leaderboardPeriod === "month"));
         await new Promise((resolve) => setTimeout(resolve, 150));
         assert(reloadedDoc.querySelector(".leaderboard-card").textContent.includes("Goals approved this month"), "Leaderboard can filter rankings by month");

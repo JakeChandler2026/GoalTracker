@@ -683,6 +683,17 @@ function normalizeState(rawState) {
       email: Boolean(user.notificationChannels?.email),
       push: Boolean(user.notificationChannels?.push)
     },
+    inactivityNotificationsOptIn: user.role === "youth" ? Boolean(user.inactivityNotificationsOptIn) : false,
+    inactivityNotificationChannels: {
+      inApp: user.inactivityNotificationChannels?.inApp !== false,
+      email: Boolean(user.inactivityNotificationChannels?.email),
+      push: Boolean(user.inactivityNotificationChannels?.push)
+    },
+    inactivityReminderMinHours: Math.min(96, Math.max(24, Number(user.inactivityReminderMinHours || 24))),
+    inactivityReminderMaxHours: Math.min(96, Math.max(24, Number(user.inactivityReminderMaxHours || 96))),
+    nextInactivityReminderAt: user.nextInactivityReminderAt || null,
+    pushToken: user.pushToken || "",
+    lastActiveAt: user.lastActiveAt || null,
     approvalStatus: user.approvalStatus || (user.role === "youth_leader" ? "approved" : "verified"),
     loginStatus: user.loginStatus || ((user.role === "youth" || user.role === "parent") && !user.email ? "not_invited" : "verified")
   }));
@@ -1969,6 +1980,14 @@ function getNotificationChannels(user) {
   };
 }
 
+function getInactivityNotificationChannels(user) {
+  return {
+    inApp: user.inactivityNotificationChannels?.inApp !== false,
+    email: Boolean(user.inactivityNotificationChannels?.email),
+    push: Boolean(user.inactivityNotificationChannels?.push)
+  };
+}
+
 function getYouthNotifications(userId) {
   return (state.notifications || [])
     .filter((notification) => notification.userId === userId)
@@ -1998,27 +2017,56 @@ async function updateSameGoalNotificationPreference(form) {
       inApp: true,
       email: form.elements.sameGoalEmail.checked,
       push: form.elements.sameGoalPush.checked
-    }
+    },
+    inactivityNotificationsOptIn: form.elements.inactivityNotificationsOptIn.checked,
+    inactivityNotificationChannels: {
+      inApp: true,
+      email: form.elements.inactivityEmail.checked,
+      push: form.elements.inactivityPush.checked
+    },
+    inactivityReminderMinHours: 24,
+    inactivityReminderMaxHours: 96
   };
 
-  state.users = state.users.map((user) => user.id === updatedUser.id ? updatedUser : user);
-  saveState();
-  render();
+  try {
+    const nextState = backendClient.updateNotificationPreferences
+      ? await backendClient.updateNotificationPreferences(STORAGE_KEY, state, {
+        user: updatedUser,
+        fallbackState: getFallbackState()
+      })
+      : {
+        ...state,
+        users: state.users.map((user) => user.id === updatedUser.id ? updatedUser : user)
+      };
+    state = normalizeState(nextState);
+    state.session = { ...state.session, userId: updatedUser.id };
+    saveState();
+    render();
+  } catch (error) {
+    console.warn("Notification preference update failed.", error);
+    window.alert(error?.message || "Your notification preferences could not be saved right now.");
+  }
 }
 
 function buildSameGoalNotificationCard(sessionUser) {
   const card = document.createElement("section");
   card.className = "form-card notification-preference-card";
   const channels = getNotificationChannels(sessionUser);
+  const inactivityChannels = getInactivityNotificationChannels(sessionUser);
+  const pushReady = Boolean(sessionUser.pushToken);
   card.innerHTML = `
     <div class="panel-header">
       <div>
-        <p class="eyebrow">Same Goal Alerts</p>
-        <h3>${sessionUser.sameGoalNotificationsOptIn ? "Notifications On" : "Notifications Off"}</h3>
-        <p class="subgoal-meta">Get notified when another youth with the same templated goal passes your checkbox progress or completes more same-goal checks this week.</p>
+        <p class="eyebrow">Notification Settings</p>
+        <h3>${sessionUser.sameGoalNotificationsOptIn || sessionUser.inactivityNotificationsOptIn ? "Notifications On" : "Notifications Off"}</h3>
+        <p class="subgoal-meta">Choose same-goal alerts and reminders for when you have not used the tracker in a while.</p>
       </div>
     </div>
     <form class="stack same-goal-notification-form">
+      <div class="notification-preference-group">
+        <h4>Same Goal Alerts</h4>
+        <p class="subgoal-meta">Get notified when another youth with the same templated goal passes your checkbox progress or completes more same-goal checks this week.</p>
+      </div>
       <label class="checkbox-label">
         <input name="sameGoalNotificationsOptIn" type="checkbox" ${sessionUser.sameGoalNotificationsOptIn ? "checked" : ""}>
         <span>Notify me when someone passes me on the same goal</span>
@@ -2031,7 +2079,23 @@ function buildSameGoalNotificationCard(sessionUser) {
         <input name="sameGoalPush" type="checkbox" ${channels.push ? "checked" : ""}>
         <span>Mobile push when available</span>
       </label>
-      <p class="subgoal-meta">In-app alerts are active now. Email and push are saved as delivery preferences for the backend/mobile notification service.</p>
+      <div class="notification-preference-group">
+        <h4>Inactivity Reminders</h4>
+        <p class="subgoal-meta">When reminders are on, the server can contact you on a random schedule between 24 and 96 hours after your last activity.</p>
+      </div>
+      <label class="checkbox-label">
+        <input name="inactivityNotificationsOptIn" type="checkbox" ${sessionUser.inactivityNotificationsOptIn ? "checked" : ""}>
+        <span>Remind me if I have not used the goal tracker recently</span>
+      </label>
+      <label class="checkbox-label">
+        <input name="inactivityEmail" type="checkbox" ${inactivityChannels.email ? "checked" : ""}>
+        <span>Email inactivity reminders</span>
+      </label>
+      <label class="checkbox-label">
+        <input name="inactivityPush" type="checkbox" ${inactivityChannels.push ? "checked" : ""}>
+        <span>Mobile push inactivity reminders</span>
+      </label>
+      <p class="subgoal-meta">In-app alerts are active now. Email delivery uses the backend service. ${pushReady ? "Push is linked to this account." : "Push delivery starts after the mobile app registers this device."}</p>
       <button type="submit">Save Notification Settings</button>
     </form>
   `;
@@ -2665,6 +2729,18 @@ async function login(event) {
         console.warn("Supabase state reload after login failed.", reloadError);
       }
     }
+    if (backendClient.recordUserActivity && result.session?.userId) {
+      try {
+        const activityState = await backendClient.recordUserActivity(STORAGE_KEY, state, {
+          userId: result.session.userId,
+          fallbackState: getFallbackState()
+        });
+        state = normalizeState(activityState);
+        state.session = result.session;
+      } catch (activityError) {
+        console.warn("User activity timestamp could not be recorded.", activityError);
+      }
+    }
     activeAdminDashboardView = "overview";
     activeYouthDashboardView = "goals";
     saveState();
@@ -2822,6 +2898,7 @@ function queueSameGoalPassedNotifications(previousActorGoal, actorGoal, actor) {
       const notification = {
         id: createId("notification"),
         userId: recipient.id,
+        recipientId: recipient.id,
         actorId: actor.id,
         actorName: actor.name,
         goalId: actorGoal.id,
