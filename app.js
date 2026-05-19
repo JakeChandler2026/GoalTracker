@@ -606,6 +606,13 @@ function renderRuntimeBanner() {
   elements.runtimeBanner.innerHTML = `<strong>${modeLabel}</strong><span>${storageAdapter.statusMessage || backendRuntime.statusMessage}</span>`;
 }
 
+function applyBackendState(nextState, sessionOverride = state.session) {
+  state = normalizeState(nextState);
+  if (sessionOverride) {
+    state.session = sessionOverride;
+  }
+}
+
 async function persistGoal(goal, options = {}) {
   const nextState = options.isCreate
     ? await backendClient.createGoal(STORAGE_KEY, state, {
@@ -619,7 +626,7 @@ async function persistGoal(goal, options = {}) {
       goal,
       fallbackState: getFallbackState()
     });
-  state = normalizeState(nextState);
+  applyBackendState(nextState);
   saveState();
   render();
 }
@@ -635,7 +642,7 @@ async function persistTemplate(template, options = {}) {
       template,
       fallbackState: getFallbackState()
     });
-  state = normalizeState(nextState);
+  applyBackendState(nextState);
   saveState();
   render();
 }
@@ -1473,7 +1480,7 @@ async function assignMissingRequiredGoalsForYouth(youth, level, createdBy = null
       createdBy: createdBy || state.session?.userId || youth.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     assignedCount += 1;
   }
   saveState();
@@ -1962,7 +1969,7 @@ async function updateCompetitionPreference(competitionOptIn) {
         ...state,
         users: state.users.map((user) => user.id === updatedUser.id ? updatedUser : user)
       };
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     state.session = { ...state.session, userId: updatedUser.id };
     saveState();
     render();
@@ -2038,7 +2045,7 @@ async function updateSameGoalNotificationPreference(form) {
         ...state,
         users: state.users.map((user) => user.id === updatedUser.id ? updatedUser : user)
       };
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     state.session = { ...state.session, userId: updatedUser.id };
     saveState();
     render();
@@ -3282,7 +3289,7 @@ async function createYouthAccount(event) {
       password,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     await assignMissingRequiredGoalsForYouth(user, 1, sessionUser.id);
     saveState();
     activeAdminDashboardView = "overview";
@@ -3454,7 +3461,7 @@ async function importYouthRoster(event) {
       });
     }
 
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     for (const imported of importedYouth) {
       const youth = state.users.find((user) =>
         user.role === "youth" &&
@@ -3526,7 +3533,7 @@ async function updateYouthAccount(event) {
       updatedBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeEditingYouthId = null;
     activeAdminDashboardView = "overview";
@@ -3604,7 +3611,7 @@ async function createParentForYouth(event) {
       updatedBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeEditingYouthId = youth.id;
     activeAdminDashboardView = "edit-youth";
@@ -3634,7 +3641,7 @@ async function unlinkParentFromYouth(parentId, youthId) {
       updatedBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeEditingYouthId = youthId;
     activeAdminDashboardView = "edit-youth";
@@ -3663,7 +3670,7 @@ async function approveYouthLeaderAccount(leaderId) {
       approvedBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     render();
   } catch (error) {
@@ -3688,7 +3695,7 @@ async function updateWardAccessStatus(userId, approvalStatus) {
       updatedBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeAdminDashboardView = "ward-approval";
     render();
@@ -3725,7 +3732,7 @@ async function updateWardAccountType(form) {
       updatedBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeAdminDashboardView = "ward-approval";
     render();
@@ -4401,7 +4408,7 @@ async function createAdminWard(event) {
       createdBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeAdminDashboardView = "ward-management";
     form.reset();
@@ -4453,7 +4460,7 @@ async function createAdminBishop(event) {
       createdBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeAdminDashboardView = "ward-management";
     form.reset();
@@ -4493,7 +4500,7 @@ async function assignAdminBishopWard(event) {
       updatedBy: sessionUser.id,
       fallbackState: getFallbackState()
     });
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     activeAdminDashboardView = "ward-management";
     form.reset();
@@ -5268,7 +5275,7 @@ async function createRequiredLevelGoal(event) {
     createdBy: sessionUser.id,
     fallbackState: getFallbackState()
   });
-  state = normalizeState(nextState);
+  applyBackendState(nextState);
   await assignRequiredGoalDefinitionToArrivedYouth(requiredGoal, sessionUser);
   saveState();
   form.reset();
@@ -5314,7 +5321,7 @@ async function updateRequiredLevelGoal(requiredGoalId, form) {
     updatedBy: sessionUser.id,
     fallbackState: getFallbackState()
   });
-  state = normalizeState(nextState);
+  applyBackendState(nextState);
   await assignRequiredGoalDefinitionToArrivedYouth(requiredGoal, sessionUser);
   saveState();
   render();
@@ -5331,7 +5338,7 @@ function deleteRequiredLevelGoal(requiredGoalId) {
     deletedBy: sessionUser.id,
     fallbackState: getFallbackState()
   }).then((nextState) => {
-    state = normalizeState(nextState);
+    applyBackendState(nextState);
     saveState();
     render();
   }).catch((error) => {
@@ -5366,7 +5373,7 @@ async function updateLevelGoalRequirements(event) {
       fallbackState: getFallbackState()
     })
     : { ...state, levelGoalRequirements };
-  state = normalizeState(nextState);
+  applyBackendState(nextState);
   saveState();
   render();
 }
@@ -5997,3 +6004,4 @@ Promise.race([
   bootstrappedState = true;
   render();
 });
+
