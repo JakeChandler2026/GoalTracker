@@ -715,8 +715,8 @@ button:hover {
 .youth-goal-progress-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
+  align-items: start;
+  gap: 6px 10px;
   padding: 9px;
   border: 1px solid rgba(22, 119, 255, 0.12);
   border-radius: 8px;
@@ -724,7 +724,7 @@ button:hover {
 }
 
 .youth-goal-progress-copy {
-  min-width: 0;
+  display: contents;
 }
 
 .youth-goal-progress-copy strong,
@@ -735,10 +735,15 @@ button:hover {
 .youth-goal-progress-copy strong {
   display: flex;
   align-items: center;
+  grid-column: 1 / -1;
   gap: 7px;
   min-width: 0;
   font-size: 0.88rem;
   line-height: 1.25;
+}
+
+.youth-goal-progress-copy .subgoal-meta {
+  grid-column: 1;
 }
 
 .goal-progress-title {
@@ -749,6 +754,8 @@ button:hover {
 }
 
 .youth-goal-progress-controls {
+  grid-column: 2;
+  grid-row: 2;
   display: grid;
   gap: 8px;
   justify-items: end;
@@ -762,8 +769,9 @@ button:hover {
   flex: 0 0 auto;
   width: 22px;
   height: 22px;
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
   text-align: center;
   border-radius: 999px;
@@ -1381,6 +1389,8 @@ button:hover {
   }
 
   .youth-goal-progress-controls {
+    grid-column: 1;
+    grid-row: auto;
     justify-items: stretch;
   }
 
