@@ -88,12 +88,20 @@
                 <option value="">Loading wards...</option>
               </select>
             </label>
+            <label id="registerNewWardField" class="hidden">
+              <span>New ward name</span>
+              <input id="registerNewWard" name="registerNewWard" type="text" placeholder="Example: Pocatello Creek Ward">
+            </label>
             <label id="registerOrganizationField">
               <span>Organization</span>
               <select id="registerOrganization" name="registerOrganization">
                 <option value="young_men">Young Men</option>
                 <option value="young_women">Young Women</option>
               </select>
+            </label>
+            <label id="registerCompetitionField" class="checkbox-label">
+              <input id="registerCompetitionOptIn" name="registerCompetitionOptIn" type="checkbox" checked>
+              <span>Join ward and stake leaderboards</span>
             </label>
             <label>
               <span>Password</span>

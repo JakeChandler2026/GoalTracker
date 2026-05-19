@@ -14,6 +14,7 @@ $testScript = Join-Path $projectRoot "tests\e2e-harness.js"
 $bundledNodeRoot = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\node"
 $bundledNodeExe = Join-Path $bundledNodeRoot "bin\node.exe"
 $bundledNodeModules = Join-Path $bundledNodeRoot "node_modules"
+$bundledPnpmModules = Join-Path $bundledNodeModules ".pnpm"
 
 function Find-Browser {
   param([string]$ExplicitPath)
@@ -130,7 +131,19 @@ $env:E2E_OUTPUT_PATH = $OutputPath
 $env:E2E_BROWSER_PATH = $browser
 
 if (Test-Path $bundledNodeModules) {
-  $env:NODE_PATH = $bundledNodeModules
+  $nodePathEntries = @()
+  if (Test-Path $bundledPnpmModules) {
+    $playwrightModuleRoots = Get-ChildItem -Path $bundledPnpmModules -Directory -Filter "playwright@*" -ErrorAction SilentlyContinue |
+      ForEach-Object { Join-Path $_.FullName "node_modules" } |
+      Where-Object { Test-Path (Join-Path $_ "playwright-core") }
+    $nodePathEntries += $playwrightModuleRoots
+  }
+  $nodePathEntries += $bundledNodeModules
+  if ($env:NODE_PATH) {
+    $nodePathEntries += $env:NODE_PATH
+  }
+  $env:NODE_PATH = ($nodePathEntries | Select-Object -Unique) -join [System.IO.Path]::PathSeparator
 }
 
 & $node $testScript
+exit $LASTEXITCODE

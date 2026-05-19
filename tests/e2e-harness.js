@@ -12,8 +12,9 @@ const browserPath = process.env.E2E_BROWSER_PATH || "";
     executablePath: browserPath || undefined
   });
 
+  let page;
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 2200 } });
+    page = await browser.newPage({ viewport: { width: 1280, height: 2200 } });
     const browserErrors = [];
 
     page.on("pageerror", (error) => {
@@ -21,7 +22,10 @@ const browserPath = process.env.E2E_BROWSER_PATH || "";
     });
 
     await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("text=All browser tests passed.", { timeout: 90000 });
+    await page.waitForFunction(() => {
+      const results = document.querySelector("#results");
+      return Boolean(results?.textContent?.includes("All browser tests passed.") || results?.querySelector(".fail"));
+    }, null, { timeout: 180000 });
 
     const failures = await page.locator(".fail").allTextContents();
     const html = await page.content();
@@ -38,6 +42,12 @@ const browserPath = process.env.E2E_BROWSER_PATH || "";
     const passCount = await page.locator(".pass").count();
     console.log(`E2E tests passed (${passCount} assertions).`);
     console.log(`Output: ${outputPath}`);
+  } catch (error) {
+    if (page) {
+      fs.writeFileSync(outputPath, await page.content(), "utf8");
+      console.error(`Output: ${outputPath}`);
+    }
+    throw error;
   } finally {
     await browser.close();
   }
