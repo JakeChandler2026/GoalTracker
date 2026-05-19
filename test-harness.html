@@ -29,6 +29,8 @@
     const frame = document.getElementById("appFrame");
     let hasRun = false;
     let lastAlertMessage = "";
+    let lastConfirmMessage = "";
+    let nextConfirmResponse = true;
 
     function assert(condition, message) {
       const line = document.createElement("div");
@@ -117,6 +119,10 @@
         win.alert = (message) => {
           lastAlertMessage = String(message || "");
         };
+        win.confirm = (message) => {
+          lastConfirmMessage = String(message || "");
+          return nextConfirmResponse;
+        };
 
         win.localStorage.removeItem("bishop-goal-tracker-state-v1");
         win.localStorage.removeItem("demo-local:bishop-goal-tracker-state-v1");
@@ -130,6 +136,10 @@
         const reloadedDoc = frame.contentDocument;
         frame.contentWindow.alert = (message) => {
           lastAlertMessage = String(message || "");
+        };
+        frame.contentWindow.confirm = (message) => {
+          lastConfirmMessage = String(message || "");
+          return nextConfirmResponse;
         };
 
         assert(reloadedDoc.getElementById("loginForm") !== null, "Login form renders");
@@ -963,6 +973,34 @@
             button.textContent.includes("Template Screen Button Goal")
           ),
           "Template created from the Template Editor screen appears in the template list"
+        );
+        let createdInlineTemplateCard = Array.from(reloadedDoc.querySelectorAll(".template-grid .form-card")).find((card) =>
+          card.querySelector("h3")?.textContent === "Template Screen Button Goal"
+        );
+        assert(Boolean(createdInlineTemplateCard), "Newly created template opens for editing");
+        nextConfirmResponse = false;
+        lastConfirmMessage = "";
+        click(Array.from(createdInlineTemplateCard.querySelectorAll("button")).find((button) => button.textContent.includes("Delete Template")));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert(
+          lastConfirmMessage.includes("Are you sure you want to delete this as a goal template?") &&
+            lastConfirmMessage.includes("remove the template from all other users' ability to use this template"),
+          "Deleting a template asks for the expected confirmation"
+        );
+        assert(
+          Array.from(reloadedDoc.querySelectorAll(".template-list-item")).some((button) =>
+            button.textContent.includes("Template Screen Button Goal")
+          ),
+          "Canceling template deletion keeps the template"
+        );
+        nextConfirmResponse = true;
+        click(Array.from(createdInlineTemplateCard.querySelectorAll("button")).find((button) => button.textContent.includes("Delete Template")));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(
+          !Array.from(reloadedDoc.querySelectorAll(".template-list-item")).some((button) =>
+            button.textContent.includes("Template Screen Button Goal")
+          ),
+          "Confirming template deletion removes the template from the list"
         );
         click(Array.from(reloadedDoc.querySelectorAll(".template-list-item")).find((button) =>
           button.textContent.includes("Daily Scripture Habit")

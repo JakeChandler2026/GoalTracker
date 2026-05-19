@@ -656,6 +656,30 @@ async function persistTemplate(template, options = {}) {
   render();
 }
 
+async function deleteTemplate(templateId) {
+  const sessionUser = getSessionUser();
+  const template = state.templates.find((item) => item.id === templateId);
+  if (!sessionUser || !isWardAdmin(sessionUser) || !template) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Are you sure you want to delete this as a goal template? It will remove the template from all other users' ability to use this template."
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  const nextState = await backendClient.deleteTemplate(STORAGE_KEY, state, {
+    templateId,
+    fallbackState: getFallbackState()
+  });
+  applyBackendState(nextState);
+  activeTemplateId = state.templates[0]?.id || null;
+  saveState();
+  render();
+}
+
 function normalizeState(rawState) {
   const nextState = JSON.parse(JSON.stringify(rawState));
 
@@ -4785,6 +4809,7 @@ function buildTemplateWorkspace(template) {
   const isCreatingTemplate = activeTemplateId === NEW_TEMPLATE_ID;
   const canAssignTemplate = Boolean(template && template.templateApproved !== false && sessionUser && isWardAdmin(sessionUser));
   const canApproveTemplate = Boolean(template && template.templateApproved === false && sessionUser && isWardAdmin(sessionUser));
+  const canDeleteTemplate = Boolean(template && sessionUser && isWardAdmin(sessionUser));
   const managedYouthOptions = canAssignTemplate
     ? getManagedYouth(sessionUser).map((user) => `<option value="${user.id}">${user.name} (${getOrganizationLabel(user.organization)})</option>`).join("")
     : "";
@@ -4882,6 +4907,7 @@ function buildTemplateWorkspace(template) {
       </div>
       ` : ""}
       ${canApproveTemplate ? `<button class="secondary-button" type="button" data-action="approve-template">Approve Optional Goal</button>` : ""}
+      ${canDeleteTemplate ? `<button class="danger-button" type="button" data-action="delete-template">Delete Template</button>` : ""}
       <button class="primary-button" type="submit">Save Template Changes</button>
     </form>
   ` : `
@@ -4921,6 +4947,9 @@ function buildTemplateWorkspace(template) {
     });
     form.querySelector("[data-action='approve-template']")?.addEventListener("click", () => {
       approveTemplateForUse(template.id);
+    });
+    form.querySelector("[data-action='delete-template']")?.addEventListener("click", () => {
+      deleteTemplate(template.id);
     });
   }
   const createForm = card.querySelector("#createTemplateForm");

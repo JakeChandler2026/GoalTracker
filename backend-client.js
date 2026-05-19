@@ -436,6 +436,11 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       }
       return nextState;
     },
+    async deleteTemplate(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      nextState.templates = (nextState.templates || []).filter((template) => template.id !== payload.templateId);
+      return nextState;
+    },
     async updateLevelGoalRequirements(storageKey, appState, payload) {
       const nextState = clone(appState);
       nextState.levelGoalRequirements = payload.levelGoalRequirements || [];
@@ -993,6 +998,23 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         return nextState;
       }
     },
+    async deleteTemplate(storageKey, appState, payload) {
+      try {
+        const client = createSupabaseClient();
+        const templateResult = await client.from("goal_templates").delete().eq("id", payload.templateId);
+        if (templateResult.error) {
+          throw templateResult.error;
+        }
+        const nextState = await reloadSupabaseAppState(storageKey, payload.fallbackState);
+        nextState.templates = (nextState.templates || []).filter((template) => template.id !== payload.templateId);
+        return nextState;
+      } catch (error) {
+        console.warn("Supabase deleteTemplate failed; falling back to snapshot bridge.", error);
+        const nextState = await localStorageProvider.deleteTemplate(storageKey, appState, payload);
+        await supabaseSnapshotProvider.saveAppState(storageKey, nextState);
+        return nextState;
+      }
+    },
     async updateLevelGoalRequirements(storageKey, appState, payload) {
       try {
         const client = createSupabaseClient();
@@ -1302,6 +1324,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     },
     async updateTemplate(storageKey, appState, payload) {
       return (activeProvider.updateTemplate || localStorageProvider.updateTemplate)(storageKey, appState, payload);
+    },
+    async deleteTemplate(storageKey, appState, payload) {
+      return (activeProvider.deleteTemplate || localStorageProvider.deleteTemplate)(storageKey, appState, payload);
     },
     async updateLevelGoalRequirements(storageKey, appState, payload) {
       return (activeProvider.updateLevelGoalRequirements || localStorageProvider.updateLevelGoalRequirements)(storageKey, appState, payload);
