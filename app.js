@@ -4927,7 +4927,7 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
           return `
             <div class="youth-goal-progress-row">
               <div class="youth-goal-progress-copy">
-                <strong><span class="goal-number-chip">${index + 1}</span>${goal.title}</strong>
+                <strong><span class="goal-number-chip">${index + 1}</span><span class="goal-progress-title">${escapeHtml(goal.title)}</span></strong>
                 <span class="subgoal-meta">${status.label}</span>
               </div>
               <div class="youth-goal-progress-controls">

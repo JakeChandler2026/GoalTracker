@@ -741,6 +741,11 @@ button:hover {
   line-height: 1.25;
 }
 
+.goal-progress-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .youth-goal-progress-controls {
   display: grid;
   gap: 8px;
