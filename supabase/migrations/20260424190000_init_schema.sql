@@ -63,6 +63,7 @@ create table if not exists public.goal_templates (
   title text not null,
   summary text not null,
   points integer not null default 0 check (points >= 0),
+  duration_days integer not null default 30 check (duration_days > 0),
   created_by uuid not null references public.profiles(id) on delete restrict,
   ward_id uuid references public.wards(id) on delete cascade,
   created_at timestamptz not null default now(),

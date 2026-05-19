@@ -140,6 +140,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         points: normalizePointValue(template.points),
         difficulty: normalizeDifficulty(template.difficulty, template.points),
         category: normalizeGoalCategory(template.category),
+        durationDays: Math.max(1, Math.floor(Number(template.durationDays || 30))),
         templateApproved: template.templateApproved !== false,
         templateApprovedBy: template.templateApprovedBy || null,
         templateApprovedAt: template.templateApprovedAt || null
@@ -150,6 +151,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         points: normalizePointValue(template.points),
         difficulty: normalizeDifficulty(template.difficulty, template.points),
         category: normalizeGoalCategory(template.category),
+        durationDays: Math.max(1, Math.floor(Number(template.durationDays || 30))),
         templateApproved: template.templateApproved !== false,
         templateApprovedBy: template.templateApprovedBy || null,
         templateApprovedAt: template.templateApprovedAt || null
@@ -824,6 +826,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             points: normalizePointValue(template.points),
             difficulty: normalizeDifficulty(template.difficulty, template.points),
             category: normalizeGoalCategory(template.category),
+            durationDays: Math.max(1, Math.floor(Number(template.duration_days || 30))),
             templateApproved: template.template_approved !== false,
             templateApprovedBy: template.template_approved_by ? (profileNamesById.get(template.template_approved_by) || null) : null,
             templateApprovedAt: template.template_approved_at ? String(template.template_approved_at).slice(0, 10) : null,
@@ -976,6 +979,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           points: normalizePointValue(payload.template.points),
           difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
           category: normalizeGoalCategory(payload.template.category),
+          duration_days: Math.max(1, Math.floor(Number(payload.template.durationDays || 30))),
           template_approved: payload.template.templateApproved !== false,
           template_approved_by: payload.template.templateApproved !== false ? (payload.template.templateApprovedById || payload.createdBy || null) : null,
           template_approved_at: payload.template.templateApproved !== false ? new Date().toISOString() : null,
@@ -1003,7 +1007,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           summary: payload.template.summary,
           points: normalizePointValue(payload.template.points),
           difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
-          category: normalizeGoalCategory(payload.template.category)
+          category: normalizeGoalCategory(payload.template.category),
+          duration_days: Math.max(1, Math.floor(Number(payload.template.durationDays || 30)))
         };
         if (payload.template.templateApprovalUpdated) {
           templateUpdate.template_approved = payload.template.templateApproved !== false;

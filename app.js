@@ -126,6 +126,13 @@ const DEFAULT_LEVEL_GOAL_REQUIREMENTS = [
     }
   }
 ];
+const TEMPLATE_DURATION_PRESETS = [
+  { days: 7, label: "1 week" },
+  { days: 30, label: "1 month" },
+  { days: 90, label: "3 months" },
+  { days: 180, label: "6 months" },
+  { days: 365, label: "1 year" }
+];
 const LEVEL_POINT_REQUIREMENTS = [100, 100, 100];
 const LEADERBOARD_PERIODS = {
   all: {
@@ -416,6 +423,7 @@ const firstRunState = {
       points: 100,
       difficulty: "hard",
       category: "spiritual",
+      durationDays: 90,
       templateApproved: true,
       subGoals: [
         { id: "tsg1", title: "Read 20 minutes a day", repeatCount: 90 },
@@ -429,6 +437,7 @@ const firstRunState = {
       points: 0,
       difficulty: "easy",
       category: "social",
+      durationDays: 30,
       templateApproved: false,
       subGoals: [
         { id: "tsg-pending-service-1", title: "Complete a service invitation", repeatCount: 1 }
@@ -815,6 +824,7 @@ function normalizeState(rawState) {
     points: normalizePointValue(template.points),
     difficulty: normalizeDifficulty(template.difficulty, template.points),
     category: normalizeGoalCategory(template.category),
+    durationDays: normalizeDurationDays(template.durationDays),
     templateApproved: template.templateApproved !== false,
     templateApprovedBy: template.templateApprovedBy || null,
     templateApprovedAt: normalizeDateString(template.templateApprovedAt),
@@ -1090,6 +1100,25 @@ function buildDifficultyOptions(selected = "medium") {
   return DIFFICULTY_ORDER.map((difficulty) =>
     `<option value="${difficulty}"${difficulty === normalizedSelected ? " selected" : ""}>${GOAL_DIFFICULTIES[difficulty].label}</option>`
   ).join("");
+}
+
+function normalizeDurationDays(value, fallback = 30) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(parsed));
+}
+
+function buildDurationPresetOptions(selected = 30) {
+  const normalizedSelected = normalizeDurationDays(selected);
+  const hasPreset = TEMPLATE_DURATION_PRESETS.some((preset) => preset.days === normalizedSelected);
+  return [
+    ...TEMPLATE_DURATION_PRESETS.map((preset) =>
+      `<option value="${preset.days}"${preset.days === normalizedSelected ? " selected" : ""}>${preset.label}</option>`
+    ),
+    !hasPreset ? `<option value="${normalizedSelected}" selected>${normalizedSelected} days</option>` : ""
+  ].join("");
 }
 
 function groupTemplatesByCategory(templates = []) {
@@ -1393,6 +1422,9 @@ function syncGoalFormFromTemplate(form, templateId) {
     if (form.elements.goalCategory) {
       form.elements.goalCategory.value = "spiritual";
     }
+    if (form.elements.goalDeadline) {
+      form.elements.goalDeadline.value = getDefaultGoalDeadline();
+    }
     writeDraftChecklistItems(form, []);
     renderDraftChecklistItems(form);
     return;
@@ -1413,6 +1445,9 @@ function syncGoalFormFromTemplate(form, templateId) {
   }
   if (form.elements.goalCategory) {
     form.elements.goalCategory.value = normalizeGoalCategory(template.category);
+  }
+  if (form.elements.goalDeadline) {
+    form.elements.goalDeadline.value = addDays(getTodayDateString(), normalizeDurationDays(template.durationDays));
   }
   writeDraftChecklistItems(form, template.subGoals.map((subGoal) => ({
     title: subGoal.title,
@@ -1473,7 +1508,7 @@ function addDraftChecklistItem(form) {
   renderDraftChecklistItems(form);
 }
 
-function buildGoalFromTemplate(template, userId, deadline = getDefaultGoalDeadline()) {
+function buildGoalFromTemplate(template, userId, deadline = addDays(getTodayDateString(), normalizeDurationDays(template.durationDays))) {
   const sessionUser = getSessionUser();
   return {
     id: createId("goal"),
@@ -1740,6 +1775,7 @@ async function updateTemplateDetails(templateId, form) {
   const summary = form.elements.editTemplateSummary.value.trim();
   const difficulty = normalizeDifficulty(form.elements.editTemplateDifficulty?.value || template.difficulty, template.points);
   const category = normalizeGoalCategory(form.elements.editTemplateCategory?.value || template.category);
+  const durationDays = normalizeDurationDays(form.elements.editTemplateDurationDays?.value || template.durationDays);
   const subGoals = Array.from(form.querySelectorAll(".editable-subgoal-row")).map((row, index) => ({
     id: template.subGoals[index]?.id || createId("template-subgoal"),
     title: row.querySelector("[name='editableSubGoalTitle']").value.trim(),
@@ -1755,6 +1791,7 @@ async function updateTemplateDetails(templateId, form) {
   template.summary = summary;
   template.difficulty = difficulty;
   template.category = category;
+  template.durationDays = durationDays;
   template.subGoals = subGoals;
   activeTemplateId = null;
   await persistTemplate(template);
@@ -3389,6 +3426,7 @@ async function createTemplate(event) {
     points: normalizePointValue(form.elements.templatePoints?.value || 0),
     difficulty: normalizeDifficulty(form.elements.templateDifficulty?.value || "medium", form.elements.templatePoints?.value || 0),
     category: normalizeGoalCategory(form.elements.templateCategory?.value || "spiritual"),
+    durationDays: normalizeDurationDays(form.elements.templateDurationDays?.value || 30),
     templateApproved: true,
     templateApprovedBy: sessionUser.name,
     templateApprovedById: sessionUser.id,
@@ -4963,6 +5001,10 @@ function buildTemplateWorkspace(template) {
         <span>Default difficulty</span>
         <select name="templateDifficulty">${buildDifficultyOptions("medium")}</select>
       </label>
+      <label>
+        <span>Default timeline</span>
+        <select name="templateDurationDays">${buildDurationPresetOptions(30)}</select>
+      </label>
       <div class="draft-builder">
         <div class="draft-builder-grid">
           <label>
@@ -5006,6 +5048,10 @@ function buildTemplateWorkspace(template) {
       <label>
         <span>Default difficulty</span>
         <select name="editTemplateDifficulty">${buildDifficultyOptions(template.difficulty)}</select>
+      </label>
+      <label>
+        <span>Default timeline</span>
+        <select name="editTemplateDurationDays">${buildDurationPresetOptions(template.durationDays)}</select>
       </label>
       <div class="editable-subgoal-list">
         ${buildEditableSubgoalRows(template.subGoals)}
@@ -5622,7 +5668,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
     </div>
     <form class="form-card inline-form" id="createRequiredLevelGoalForm">
       <h3>Create Required Level Goal</h3>
-      <p class="subgoal-meta">These goals are automatically assigned to youth when they enter the selected level.</p>
+      <p class="subgoal-meta">These goals are automatically assigned to youth when they enter the selected level. The timeline starts on the assignment date.</p>
       <label>
         <span>Level</span>
         <select name="requiredGoalLevel">${levelOptions}</select>
@@ -5644,7 +5690,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
         <textarea name="requiredGoalSummary" placeholder="Describe the required goal." required></textarea>
       </label>
       <label>
-        <span>Days to complete after assignment</span>
+        <span>Timeline after level assignment</span>
         <input name="requiredGoalDeadlineDays" type="number" min="1" step="1" value="30" required>
       </label>
       <div class="draft-builder">
@@ -5720,7 +5766,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
             <textarea name="editRequiredGoalSummary" required>${escapeHtml(goal.summary)}</textarea>
           </label>
           <label>
-            <span>Days to complete after assignment</span>
+            <span>Timeline after level assignment</span>
             <input name="editRequiredGoalDeadlineDays" type="number" min="1" step="1" value="${goal.deadlineDays}" required>
           </label>
           <div class="editable-subgoal-list">
@@ -5880,6 +5926,10 @@ function buildCreateTemplateForm() {
       <label>
         <span>Default difficulty</span>
         <select name="templateDifficulty">${buildDifficultyOptions("medium")}</select>
+      </label>
+      <label>
+        <span>Default timeline</span>
+        <select name="templateDurationDays">${buildDurationPresetOptions(30)}</select>
       </label>
       <div class="draft-builder">
         <div class="draft-builder-grid">

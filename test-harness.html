@@ -95,6 +95,11 @@
       return date.toISOString().slice(0, 10);
     }
 
+    function formatHarnessDate(dateString) {
+      const date = new Date(`${dateString}T00:00:00`);
+      return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+
     async function waitFor(condition, timeoutMs = 10000, intervalMs = 100) {
       const start = Date.now();
       while (Date.now() - start < timeoutMs) {
@@ -1017,6 +1022,7 @@
           card.querySelector("h3")?.textContent === "Daily Scripture Habit"
         );
         assert(Boolean(scriptureTemplateCard), "Leader can open an existing template from the list");
+        assert(scriptureTemplateCard.querySelector("[name='editTemplateDurationDays']").value === "90", "Template editor exposes the template default timeline preset");
         const templateUserSelect = scriptureTemplateCard.querySelector(".template-user-select");
         templateUserSelect.value = "u1";
         change(templateUserSelect);
@@ -1034,6 +1040,13 @@
 
         const youthGoalTitles = Array.from(reloadedDoc.querySelectorAll(".goal-title")).map((node) => node.textContent);
         assert(youthGoalTitles.includes("Daily Scripture Habit"), "Assigned template appears in the target youth's goals");
+        const assignedTemplateGoalCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.querySelector(".goal-title").textContent === "Daily Scripture Habit"
+        );
+        assert(
+          assignedTemplateGoalCard.querySelector(".goal-deadline").textContent.includes(formatHarnessDate(addDays(new Date().toISOString().slice(0, 10), 90))),
+          "Assigned template goal deadline uses the template default timeline from assignment date"
+        );
         assert(youthGoalTitles.includes("Leader Assigned Goal Updated"), "Leader-created goal appears for the target youth");
         const reopenedYouthCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
           card.querySelector(".goal-title").textContent === "Scripture Study Goal"
