@@ -92,6 +92,11 @@ const GOAL_CATEGORIES = {
   }
 };
 const CATEGORY_ORDER = ["physical", "spiritual", "intellectual", "social"];
+const LEVEL_NAMES = {
+  1: "Learn",
+  2: "Live",
+  3: "Lead"
+};
 const DEFAULT_LEVEL_GOAL_REQUIREMENTS = [
   {
     level: 1,
@@ -153,19 +158,6 @@ const BOOK_OF_MORMON_BOOKS = [
   ["Ether", 15],
   ["Moroni", 10]
 ];
-const AWARD_NAMES_BY_ORGANIZATION = {
-  young_men: [
-    "Iron Rod Award",
-    "Stripling Warrior Award",
-    "Helaman Leadership Award"
-  ],
-  young_women: [
-    "Builders of Faith Award",
-    "Messengers of Hope Award",
-    "Gatherers of Light Award"
-  ]
-};
-
 function createBookOfMormonChapterChecklist(idPrefix) {
   return BOOK_OF_MORMON_BOOKS.flatMap(([bookName, chapterCount]) =>
     Array.from({ length: chapterCount }, (_, index) => ({
@@ -422,9 +414,24 @@ const firstRunState = {
       title: "Daily Scripture Habit",
       summary: "Build a steady scripture study routine over three months.",
       points: 100,
+      difficulty: "hard",
+      category: "spiritual",
+      templateApproved: true,
       subGoals: [
         { id: "tsg1", title: "Read 20 minutes a day", repeatCount: 90 },
         { id: "tsg2", title: "Write one takeaway each week", repeatCount: 12 }
+      ]
+    },
+    {
+      id: "t-pending-service",
+      title: "Pending Service Template",
+      summary: "A sample optional template that must be reviewed before youth can use it.",
+      points: 0,
+      difficulty: "easy",
+      category: "social",
+      templateApproved: false,
+      subGoals: [
+        { id: "tsg-pending-service-1", title: "Complete a service invitation", repeatCount: 1 }
       ]
     }
   ],
@@ -780,6 +787,9 @@ function normalizeState(rawState) {
     points: normalizePointValue(template.points),
     difficulty: normalizeDifficulty(template.difficulty, template.points),
     category: normalizeGoalCategory(template.category),
+    templateApproved: template.templateApproved !== false,
+    templateApprovedBy: template.templateApprovedBy || null,
+    templateApprovedAt: normalizeDateString(template.templateApprovedAt),
     subGoals: (template.subGoals || []).map((subGoal) => ({
       id: subGoal.id,
       title: subGoal.title,
@@ -1027,6 +1037,16 @@ function normalizeGoalCategory(value) {
 
 function getGoalCategoryLabel(value) {
   return GOAL_CATEGORIES[normalizeGoalCategory(value)].label;
+}
+
+function getLevelName(level) {
+  return LEVEL_NAMES[Number(level)] || `Level ${level}`;
+}
+
+function getLevelLabel(level) {
+  const normalizedLevel = Number(level);
+  const levelName = getLevelName(normalizedLevel);
+  return `Level ${normalizedLevel}: ${levelName}`;
 }
 
 function buildCategoryOptions(selected = "spiritual") {
@@ -1524,6 +1544,7 @@ function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline &&
 
 async function saveGoalAsTemplate(goalId) {
   const goal = state.goals.find((item) => item.id === goalId);
+  const sessionUser = getSessionUser();
   if (!goal) {
     return;
   }
@@ -1535,6 +1556,10 @@ async function saveGoalAsTemplate(goalId) {
     points: normalizePointValue(goal.points),
     difficulty: normalizeDifficulty(goal.difficulty, goal.points),
     category: normalizeGoalCategory(goal.category),
+    templateApproved: true,
+    templateApprovedBy: sessionUser.name,
+    templateApprovedById: sessionUser.id,
+    templateApprovedAt: getTodayDateString(),
     subGoals: goal.subGoals.map((subGoal) => ({
       id: createId("template-subgoal"),
       title: subGoal.title,
@@ -1640,6 +1665,21 @@ async function updateTemplateDetails(templateId, form) {
   template.category = category;
   template.subGoals = subGoals;
   activeTemplateId = null;
+  await persistTemplate(template);
+}
+
+async function approveTemplateForUse(templateId) {
+  const sessionUser = getSessionUser();
+  const template = state.templates.find((item) => item.id === templateId);
+  if (!sessionUser || !isWardAdmin(sessionUser) || !template) {
+    return;
+  }
+
+  template.templateApproved = true;
+  template.templateApprovedBy = sessionUser.name;
+  template.templateApprovedById = sessionUser.id;
+  template.templateApprovedAt = getTodayDateString();
+  template.templateApprovalUpdated = true;
   await persistTemplate(template);
 }
 
@@ -1775,14 +1815,9 @@ function getLevelGoalMilestones() {
   });
 }
 
-function getAwardNamesForYouth(sessionUser) {
-  return AWARD_NAMES_BY_ORGANIZATION[sessionUser?.organization] || AWARD_NAMES_BY_ORGANIZATION.young_men;
-}
-
 function getYouthLevelProgress(youth, period = "all") {
   const difficultyCounts = getYouthDifficultyCounts(youth.id, period);
   const milestones = getLevelGoalMilestones();
-  const awardNames = getAwardNamesForYouth(youth);
   const completedLevels = period === "all"
     ? getYouthCompletedAttainmentLevels(youth)
     : milestones.filter((level) => isDifficultyRequirementMet(difficultyCounts, level.requirements)).length;
@@ -1797,8 +1832,8 @@ function getYouthLevelProgress(youth, period = "all") {
   return {
     difficultyCounts,
     completedLevels,
-    currentLevelLabel: completedLevels > 0 ? `Level ${completedLevels}: ${awardNames[completedLevels - 1]}` : "Getting started",
-    nextLevelLabel: nextLevel ? `Level ${nextLevel.index}: ${awardNames[nextLevel.index - 1]}` : "All levels complete",
+    currentLevelLabel: completedLevels > 0 ? getLevelLabel(completedLevels) : "Getting started",
+    nextLevelLabel: nextLevel ? getLevelLabel(nextLevel.index) : "All levels complete",
     completedRequirementsForNextLevel,
     requiredGoalsForNextLevel,
     nextProgressLabel: nextLevel ? formatDifficultyRequirementProgress(difficultyCounts, nextLevel.requirements) : `${difficultyCounts.total} goals completed`,
@@ -2346,7 +2381,6 @@ function renderSessionProgressTracker(sessionUser) {
 
   const difficultyCounts = getYouthDifficultyCounts(sessionUser.id);
   const milestones = getLevelGoalMilestones();
-  const awardNames = getAwardNamesForYouth(sessionUser);
   const currentLevel = milestones.find((level) => !isDifficultyRequirementMet(difficultyCounts, level.requirements)) || milestones[milestones.length - 1];
 
   elements.sessionProgressTracker.classList.remove("hidden");
@@ -2356,7 +2390,7 @@ function renderSessionProgressTracker(sessionUser) {
         <p class="eyebrow">Overall Progress</p>
         <div class="sidebar-progress-total">
           <strong>${difficultyCounts.total} goals</strong>
-          <span class="subgoal-meta">Current target: ${awardNames[currentLevel.index - 1]}</span>
+          <span class="subgoal-meta">Current target: ${getLevelLabel(currentLevel.index)}</span>
         </div>
       </div>
       <div class="sidebar-progress-levels">
@@ -2368,7 +2402,7 @@ function renderSessionProgressTracker(sessionUser) {
           return `
             <div class="sidebar-progress-level${complete ? " is-complete" : ""}">
               <div class="sidebar-progress-level-head">
-                <strong>${awardNames[level.index - 1]}</strong>
+                <strong>${getLevelLabel(level.index)}</strong>
                 <span class="subgoal-meta">${formatDifficultyRequirementProgress(difficultyCounts, level.requirements)}</span>
               </div>
               <div class="sidebar-progress-bar">
@@ -3202,6 +3236,10 @@ async function createTemplate(event) {
     points: normalizePointValue(form.elements.templatePoints?.value || 0),
     difficulty: normalizeDifficulty(form.elements.templateDifficulty?.value || "medium", form.elements.templatePoints?.value || 0),
     category: normalizeGoalCategory(form.elements.templateCategory?.value || "spiritual"),
+    templateApproved: true,
+    templateApprovedBy: sessionUser.name,
+    templateApprovedById: sessionUser.id,
+    templateApprovedAt: getTodayDateString(),
     subGoals: draftChecklistItems.map((item) => ({
       id: createId("template-subgoal"),
       title: item.title,
@@ -3228,6 +3266,10 @@ async function assignTemplateToUser(templateId, userId) {
 
   if (!template || !user) {
     window.alert("Please choose a user before assigning this template.");
+    return;
+  }
+  if (template.templateApproved === false) {
+    window.alert("This optional goal still needs bishop or Youth leader approval before it can be copied to youth.");
     return;
   }
 
@@ -3750,7 +3792,7 @@ function buildGoalCard(goal, mode) {
   const progress = getGoalProgress(goal);
   const status = getGoalStatus(goal);
   const goalClosed = isGoalClosed(goal);
-  const requiredGoalLabel = goal.requiredGoalLevel ? `Required Level ${goal.requiredGoalLevel}` : "";
+  const requiredGoalLabel = goal.requiredGoalLevel ? `Required ${getLevelLabel(goal.requiredGoalLevel)}` : "";
 
   card.classList.toggle("is-required-goal", Boolean(goal.requiredGoalLevel));
 
@@ -4718,7 +4760,8 @@ function renderAdministratorDashboard(sessionUser) {
 function buildTemplateWorkspace(template) {
   const sessionUser = getSessionUser();
   const isCreatingTemplate = activeTemplateId === NEW_TEMPLATE_ID;
-  const canAssignTemplate = Boolean(template && sessionUser && isWardAdmin(sessionUser));
+  const canAssignTemplate = Boolean(template && template.templateApproved !== false && sessionUser && isWardAdmin(sessionUser));
+  const canApproveTemplate = Boolean(template && template.templateApproved === false && sessionUser && isWardAdmin(sessionUser));
   const managedYouthOptions = canAssignTemplate
     ? getManagedYouth(sessionUser).map((user) => `<option value="${user.id}">${user.name} (${getOrganizationLabel(user.organization)})</option>`).join("")
     : "";
@@ -4726,8 +4769,8 @@ function buildTemplateWorkspace(template) {
   card.className = "template-workspace";
   const templateListMarkup = state.templates.map((item) => `
     <button class="template-list-item${template && item.id === template.id ? " active" : ""}" type="button" data-template-id="${item.id}">
-      <strong>${item.title}</strong>
-      <span>${item.subGoals.length} checklist item${item.subGoals.length === 1 ? "" : "s"}</span>
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${item.subGoals.length} checklist item${item.subGoals.length === 1 ? "" : "s"} - ${item.templateApproved === false ? "Pending review" : "Approved"}</span>
     </button>
   `).join("");
   const createTemplateMarkup = `
@@ -4777,10 +4820,11 @@ function buildTemplateWorkspace(template) {
       <div class="panel-header">
         <div>
           <p class="eyebrow">Template Editor</p>
-          <h3>${template.title}</h3>
+          <h3>${escapeHtml(template.title)}</h3>
         </div>
-        <div class="session-badge">${template.subGoals.length} checklist item${template.subGoals.length === 1 ? "" : "s"}</div>
+        <div class="session-badge">${template.templateApproved === false ? "Pending Review" : "Approved"}</div>
       </div>
+      ${template.templateApproved === false ? `<p class="subgoal-meta">This optional goal can be edited now, but youth cannot use it until a bishop or Youth leader approves it.</p>` : ""}
       <label>
         <span>Template title</span>
         <input name="editTemplateTitle" type="text" value="${template.title.replace(/"/g, "&quot;")}">
@@ -4814,6 +4858,7 @@ function buildTemplateWorkspace(template) {
         </div>
       </div>
       ` : ""}
+      ${canApproveTemplate ? `<button class="secondary-button" type="button" data-action="approve-template">Approve Optional Goal</button>` : ""}
       <button class="primary-button" type="submit">Save Template Changes</button>
     </form>
   ` : `
@@ -4850,6 +4895,9 @@ function buildTemplateWorkspace(template) {
     });
     form.querySelector("[data-action='assign-template']")?.addEventListener("click", () => {
       assignTemplateToUser(template.id, form.elements.templateAssignTarget.value);
+    });
+    form.querySelector("[data-action='approve-template']")?.addEventListener("click", () => {
+      approveTemplateForUse(template.id);
     });
   }
   const createForm = card.querySelector("#createTemplateForm");
@@ -5385,7 +5433,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
     .filter((goal) => isSameWard(goal.ward, sessionUser.ward))
     .sort((left, right) => Number(left.level) - Number(right.level) || left.title.localeCompare(right.title));
   const levelOptions = getLevelGoalMilestones()
-    .map((level) => `<option value="${level.index}">Level ${level.index}</option>`)
+    .map((level) => `<option value="${level.index}">${getLevelLabel(level.index)}</option>`)
     .join("");
 
   section.innerHTML = `
@@ -5450,7 +5498,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
       <div class="level-requirement-grid">
         ${getLevelGoalRequirements().map((requirement) => `
           <section class="level-requirement-card">
-            <h4>Level ${requirement.level}</h4>
+            <h4>${getLevelLabel(requirement.level)}</h4>
             ${CATEGORY_ORDER.map((category) => `
               <div class="level-requirement-category">
                 <strong>${GOAL_CATEGORIES[category].label}</strong>
@@ -5472,7 +5520,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
         <form class="form-card inline-form required-goal-card" data-required-goal-id="${goal.id}">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Level ${goal.level}</p>
+              <p class="eyebrow">${getLevelLabel(goal.level)}</p>
               <h3>${escapeHtml(goal.title)}</h3>
             </div>
             <div class="session-badge">Required</div>
@@ -5480,7 +5528,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
           <label>
             <span>Level</span>
             <select name="editRequiredGoalLevel">
-              ${getLevelGoalMilestones().map((level) => `<option value="${level.index}"${Number(goal.level) === level.index ? " selected" : ""}>Level ${level.index}</option>`).join("")}
+              ${getLevelGoalMilestones().map((level) => `<option value="${level.index}"${Number(goal.level) === level.index ? " selected" : ""}>${getLevelLabel(level.index)}</option>`).join("")}
             </select>
           </label>
           <label>
@@ -5511,7 +5559,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
             <button class="primary-button" type="submit">Save Required Goal</button>
           </div>
         </form>
-      `).join("") || `<section class="form-card"><h3>No required goals yet</h3><p class="subgoal-meta">Create Level 1 goals before adding new youth if you want them assigned immediately.</p></section>`}
+      `).join("") || `<section class="form-card"><h3>No required goals yet</h3><p class="subgoal-meta">Create ${getLevelLabel(1)} goals before adding new youth if you want them assigned immediately.</p></section>`}
     </div>
   `;
 
@@ -5817,7 +5865,10 @@ function renderLeaderDashboard(sessionUser) {
   const organizationOptions = allowedOrganizations
     .map((organization) => `<option value="${organization}">${getOrganizationLabel(organization)}</option>`)
     .join("");
-  const templateOptions = state.templates.map((template) => `<option value="${template.id}">${template.title}</option>`).join("");
+  const templateOptions = state.templates
+    .filter((template) => template.templateApproved !== false)
+    .map((template) => `<option value="${template.id}">${template.title}</option>`)
+    .join("");
 
   elements.dashboardTitle.textContent = sessionUser.role === "bishop" ? `${sessionUser.name}'s ward board` : `${sessionUser.name}'s youth board`;
   elements.leaderDashboard.innerHTML = "";

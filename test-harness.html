@@ -249,9 +249,9 @@
         assert(!progressTracker.classList.contains("hidden"), "Youth account menu shows the progress tracker");
         assert(progressTracker.textContent.includes("Overall Progress"), "Progress tracker renders in the account menu");
         assert(progressTracker.querySelectorAll(".sidebar-progress-level").length === 3, "Youth progress tracker renders three award levels");
-        assert(progressTracker.textContent.includes("Iron Rod Award"), "Young Men level 1 award renders");
-        assert(progressTracker.textContent.includes("Stripling Warrior Award"), "Young Men level 2 award renders");
-        assert(progressTracker.textContent.includes("Helaman Leadership Award"), "Young Men level 3 award renders");
+        assert(progressTracker.textContent.includes("Level 1: Learn"), "Level 1 Learn renders");
+        assert(progressTracker.textContent.includes("Level 2: Live"), "Level 2 Live renders");
+        assert(progressTracker.textContent.includes("Level 3: Lead"), "Level 3 Lead renders");
         assert(progressTracker.textContent.includes("2 goals"), "Seeded youth progress appears in the account menu");
         assert(reloadedDoc.querySelectorAll(".goal-card").length >= 2, "User dashboard renders goals");
         assert(
@@ -736,6 +736,12 @@
         );
 
         await openAdminView(reloadedDoc, "Create Goal For Youth");
+        assert(
+          !Array.from(reloadedDoc.querySelector("#createManagedGoalForm select[name='goalTemplateId']").options).some((option) =>
+            option.textContent.includes("Pending Service Template")
+          ),
+          "Pending templates are hidden from the managed-goal copy dropdown"
+        );
         reloadedDoc.querySelector("#createManagedGoalForm select[name='targetYouthId']").value = "u1";
         reloadedDoc.querySelector("#createManagedGoalForm input[name='goalTitle']").value = "Leader Assigned Goal";
         reloadedDoc.querySelector("#createManagedGoalForm textarea[name='goalSummary']").value = "Assigned by a Youth leader.";
@@ -916,6 +922,29 @@
         await openAdminView(reloadedDoc, "Template Editor");
         const templateCards = reloadedDoc.querySelectorAll(".template-grid .form-card");
         assert(templateCards.length >= 2, "Leader can see goal templates");
+        click(Array.from(reloadedDoc.querySelectorAll(".template-list-item")).find((button) =>
+          button.textContent.includes("Pending Service Template")
+        ));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        let pendingTemplateCard = Array.from(reloadedDoc.querySelectorAll(".template-grid .form-card")).find((card) =>
+          card.querySelector("h3")?.textContent === "Pending Service Template"
+        );
+        assert(Boolean(pendingTemplateCard), "Leader can open a pending optional template");
+        assert(pendingTemplateCard.textContent.includes("Pending Review"), "Pending optional templates are clearly labeled");
+        assert(
+          !Array.from(pendingTemplateCard.querySelectorAll("button")).some((button) => button.textContent.includes("Copy Goal To Youth")),
+          "Pending optional templates cannot be copied to youth before approval"
+        );
+        click(Array.from(pendingTemplateCard.querySelectorAll("button")).find((button) => button.textContent.includes("Approve Optional Goal")));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        pendingTemplateCard = Array.from(reloadedDoc.querySelectorAll(".template-grid .form-card")).find((card) =>
+          card.querySelector("h3")?.textContent === "Pending Service Template"
+        );
+        assert(pendingTemplateCard.textContent.includes("Approved"), "Leader can approve a pending optional template");
+        assert(
+          Array.from(pendingTemplateCard.querySelectorAll("button")).some((button) => button.textContent.includes("Copy Goal To Youth")),
+          "Approved optional templates can be copied to youth"
+        );
         click(reloadedDoc.querySelector("[data-action='new-template']"));
         await new Promise((resolve) => setTimeout(resolve, 150));
         const inlineCreateTemplateForm = reloadedDoc.getElementById("createTemplateForm");
@@ -1123,7 +1152,7 @@
         );
         assert(
           Boolean(assignedRequiredGoalCard) &&
-          assignedRequiredGoalCard.textContent.includes("Required Level 1"),
+          assignedRequiredGoalCard.textContent.includes("Required Level 1: Learn"),
           "Assigned required goals are visually identifiable in the goal review UI"
         );
         await openAdminView(reloadedDoc, "Required Goals & Levels");

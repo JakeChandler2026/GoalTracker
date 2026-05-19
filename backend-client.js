@@ -76,7 +76,10 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         ...template,
         points: normalizePointValue(snapshotTemplate?.points ?? template.points),
         difficulty: normalizeDifficulty(snapshotTemplate?.difficulty ?? template.difficulty, snapshotTemplate?.points ?? template.points),
-        category: normalizeGoalCategory(snapshotTemplate?.category ?? template.category)
+        category: normalizeGoalCategory(snapshotTemplate?.category ?? template.category),
+        templateApproved: snapshotTemplate?.templateApproved ?? template.templateApproved ?? true,
+        templateApprovedBy: snapshotTemplate?.templateApprovedBy ?? template.templateApprovedBy ?? null,
+        templateApprovedAt: snapshotTemplate?.templateApprovedAt ?? template.templateApprovedAt ?? null
       };
     });
 
@@ -122,14 +125,20 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         ...nextState.templates[templateIndex],
         points: normalizePointValue(template.points),
         difficulty: normalizeDifficulty(template.difficulty, template.points),
-        category: normalizeGoalCategory(template.category)
+        category: normalizeGoalCategory(template.category),
+        templateApproved: template.templateApproved !== false,
+        templateApprovedBy: template.templateApprovedBy || null,
+        templateApprovedAt: template.templateApprovedAt || null
       };
     } else if (options.insert) {
       nextState.templates.unshift({
         ...template,
         points: normalizePointValue(template.points),
         difficulty: normalizeDifficulty(template.difficulty, template.points),
-        category: normalizeGoalCategory(template.category)
+        category: normalizeGoalCategory(template.category),
+        templateApproved: template.templateApproved !== false,
+        templateApprovedBy: template.templateApprovedBy || null,
+        templateApprovedAt: template.templateApprovedAt || null
       });
     }
     return nextState;
@@ -786,6 +795,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             points: normalizePointValue(template.points),
             difficulty: normalizeDifficulty(template.difficulty, template.points),
             category: normalizeGoalCategory(template.category),
+            templateApproved: template.template_approved !== false,
+            templateApprovedBy: template.template_approved_by ? (profileNamesById.get(template.template_approved_by) || null) : null,
+            templateApprovedAt: template.template_approved_at ? String(template.template_approved_at).slice(0, 10) : null,
             subGoals: buildTemplateSubGoals(templateChecklistItems, template.id)
           })),
           levelGoalRequirements: Object.values(levelGoalRequirements.reduce((byLevel, requirement) => {
@@ -933,6 +945,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           points: normalizePointValue(payload.template.points),
           difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
           category: normalizeGoalCategory(payload.template.category),
+          template_approved: payload.template.templateApproved !== false,
+          template_approved_by: payload.template.templateApproved !== false ? (payload.template.templateApprovedById || payload.createdBy || null) : null,
+          template_approved_at: payload.template.templateApproved !== false ? new Date().toISOString() : null,
           created_by: payload.createdBy,
           ward_id: wardId
         });
@@ -952,13 +967,19 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     async updateTemplate(storageKey, appState, payload) {
       try {
         const client = createSupabaseClient();
-        const templateResult = await client.from("goal_templates").update({
+        const templateUpdate = {
           title: payload.template.title,
           summary: payload.template.summary,
           points: normalizePointValue(payload.template.points),
           difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
           category: normalizeGoalCategory(payload.template.category)
-        }).eq("id", payload.template.id);
+        };
+        if (payload.template.templateApprovalUpdated) {
+          templateUpdate.template_approved = payload.template.templateApproved !== false;
+          templateUpdate.template_approved_by = payload.template.templateApprovedById || null;
+          templateUpdate.template_approved_at = payload.template.templateApprovedAt ? `${payload.template.templateApprovedAt}T00:00:00.000Z` : null;
+        }
+        const templateResult = await client.from("goal_templates").update(templateUpdate).eq("id", payload.template.id);
         if (templateResult.error) {
           throw templateResult.error;
         }
