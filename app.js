@@ -520,6 +520,8 @@ let activeGoalEditorId = null;
 let activeEditingYouthId = null;
 let state = normalizeState(getFallbackState());
 let bootstrappedState = false;
+let registerWardRefreshPromise = null;
+let registerWardRefreshComplete = false;
 
 function cloneFirstRunState() {
   return JSON.parse(JSON.stringify(firstRunState));
@@ -2748,6 +2750,7 @@ function renderRegisterWardOptions() {
     return;
   }
 
+  refreshRegisterWardOptionsFromBackend();
   const canCreateWard = activeRole === "bishop";
   const wardOptions = (state.wards || [])
     .filter((ward) => ward.name && normalizeWardKey(ward.name) !== "all")
@@ -2763,6 +2766,45 @@ function renderRegisterWardOptions() {
     elements.registerWard.value = currentValue;
   }
   updateRegisterNewWardVisibility();
+}
+
+function refreshRegisterWardOptionsFromBackend() {
+  if (!isSupabaseRuntime || registerWardRefreshPromise || registerWardRefreshComplete || !authClient.loadAvailableWards) {
+    return;
+  }
+
+  registerWardRefreshPromise = authClient.loadAvailableWards(state)
+    .then((wards) => {
+      if (!Array.isArray(wards) || !wards.length) {
+        return;
+      }
+
+      const nextWards = [...(state.wards || [])];
+      wards.forEach((ward) => {
+        if (!ward?.name || normalizeWardKey(ward.name) === "all") {
+          return;
+        }
+
+        const existingIndex = nextWards.findIndex((existingWard) =>
+          existingWard.id === ward.id || isSameWard(existingWard.name, ward.name)
+        );
+        if (existingIndex >= 0) {
+          nextWards[existingIndex] = { ...nextWards[existingIndex], ...ward };
+        } else {
+          nextWards.push(ward);
+        }
+      });
+
+      state.wards = nextWards;
+      registerWardRefreshComplete = true;
+      renderRegisterWardOptions();
+    })
+    .catch((error) => {
+      console.warn("Signup ward list could not be refreshed.", error);
+    })
+    .finally(() => {
+      registerWardRefreshPromise = null;
+    });
 }
 
 function updateRegisterNewWardVisibility() {

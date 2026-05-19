@@ -196,6 +196,9 @@
   }
 
   const demoAuthProvider = {
+    async loadAvailableWards(appState) {
+      return clone(appState?.wards || []);
+    },
     async hydrateSession(appState) {
       return { session: appState.session || null, appState };
     },
@@ -249,6 +252,24 @@
   };
 
   const supabaseAuthProvider = {
+    async loadAvailableWards() {
+      if (!runtime.canBootSupabase) {
+        return [];
+      }
+
+      const client = createSupabaseClient();
+      const result = await client.from("wards").select("id, name, stake_id").order("name", { ascending: true });
+      if (result.error) {
+        throw result.error;
+      }
+
+      return (result.data || []).map((ward) => ({
+        id: ward.id,
+        name: ward.name,
+        stakeId: ward.stake_id || "",
+        stakeName: ""
+      }));
+    },
     async hydrateSession(appState) {
       if (!runtime.canBootSupabase) {
         return demoAuthProvider.hydrateSession(appState);
@@ -429,6 +450,9 @@
     runtimeMode: runtime.runtimeMode,
     hydrateSession(appState) {
       return activeProvider.hydrateSession(appState);
+    },
+    loadAvailableWards(appState) {
+      return (activeProvider.loadAvailableWards || demoAuthProvider.loadAvailableWards)(appState);
     },
     signIn(payload) {
       return activeProvider.signIn(payload);
