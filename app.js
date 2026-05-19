@@ -1031,8 +1031,9 @@ function normalizePointValue(value) {
   return Math.floor(parsed);
 }
 
-function cloneDefaultLevelGoalRequirements() {
+function cloneDefaultLevelGoalRequirements(ward = "") {
   return DEFAULT_LEVEL_GOAL_REQUIREMENTS.map((requirement) => ({
+    ward,
     level: requirement.level,
     categories: cloneGoalCategoryMatrix(requirement.categories)
   }));
@@ -1116,14 +1117,29 @@ function normalizeRequirementCategories(source = {}, fallback = {}) {
   }, {});
 }
 
-function normalizeLevelGoalRequirements(requirements = []) {
+function normalizeLevelGoalRequirements(requirements = [], wardName = null) {
+  const requestedWard = wardName === null ? null : String(wardName || "").trim();
+  const includeAllWards = requestedWard === null;
   const byLevel = new Map();
   (requirements || []).forEach((requirement) => {
+    const requirementWard = String(requirement.ward || "").trim();
+    if (!includeAllWards) {
+      const isFallbackRequirement = !requirementWard;
+      const isMatchingWard = requirementWard && isSameWard(requirementWard, requestedWard);
+      if (!isFallbackRequirement && !isMatchingWard) {
+        return;
+      }
+    }
+
     const level = Number(requirement.level);
     if (!Number.isFinite(level)) {
       return;
     }
-    const existing = byLevel.get(level) || { level, categories: {} };
+    const key = includeAllWards ? `${normalizeWardKey(requirementWard) || "default"}:${level}` : level;
+    const existing = byLevel.get(key) || { ward: requirementWard, level, categories: {} };
+    if (requestedWard && requirementWard) {
+      existing.ward = requestedWard;
+    }
     const sourceCategories = requirement.categories || CATEGORY_ORDER.reduce((categories, category) => {
       categories[category] = requirement[category] || {};
       return categories;
@@ -1135,11 +1151,29 @@ function normalizeLevelGoalRequirements(requirements = []) {
       ...existing.categories,
       ...sourceCategories
     };
-    byLevel.set(level, existing);
+    byLevel.set(key, existing);
   });
-  return cloneDefaultLevelGoalRequirements().map((defaultRequirement) => {
+
+  if (includeAllWards) {
+    if (!byLevel.size) {
+      return cloneDefaultLevelGoalRequirements();
+    }
+    return Array.from(byLevel.values())
+      .sort((left, right) => normalizeWardKey(left.ward).localeCompare(normalizeWardKey(right.ward)) || left.level - right.level)
+      .map((requirement) => {
+        const fallback = DEFAULT_LEVEL_GOAL_REQUIREMENTS.find((item) => item.level === requirement.level) || DEFAULT_LEVEL_GOAL_REQUIREMENTS[0];
+        return {
+          ward: requirement.ward || "",
+          level: requirement.level,
+          categories: normalizeRequirementCategories(requirement.categories || {}, fallback.categories)
+        };
+      });
+  }
+
+  return cloneDefaultLevelGoalRequirements(requestedWard).map((defaultRequirement) => {
     const source = byLevel.get(defaultRequirement.level) || defaultRequirement;
     return {
+      ward: requestedWard,
       level: defaultRequirement.level,
       categories: normalizeRequirementCategories(source.categories || {}, defaultRequirement.categories)
     };
@@ -1507,7 +1541,7 @@ function getRequiredGoalCompletionForYouthLevel(youth, level) {
 
 function getYouthCompletedAttainmentLevels(youth) {
   const difficultyCounts = getYouthDifficultyCounts(youth.id);
-  const milestones = getLevelGoalMilestones();
+  const milestones = getLevelGoalMilestones(youth.ward);
   return milestones.filter((level) =>
     isDifficultyRequirementMet(difficultyCounts, level.requirements) &&
     getRequiredGoalCompletionForYouthLevel(youth, level.index).complete
@@ -1784,8 +1818,8 @@ function getYouthDifficultyCounts(userId, period = "all") {
     });
 }
 
-function getLevelGoalRequirements() {
-  return normalizeLevelGoalRequirements(state.levelGoalRequirements);
+function getLevelGoalRequirements(wardName = "") {
+  return normalizeLevelGoalRequirements(state.levelGoalRequirements, wardName);
 }
 
 function getRequirementTotal(requirement) {
@@ -1834,8 +1868,8 @@ function formatDifficultyCounts(counts) {
   }).join(" | ");
 }
 
-function getLevelGoalMilestones() {
-  return getLevelGoalRequirements().map((requirement) => {
+function getLevelGoalMilestones(wardName = "") {
+  return getLevelGoalRequirements(wardName).map((requirement) => {
     return {
       index: requirement.level,
       requirements: requirement
@@ -1845,7 +1879,7 @@ function getLevelGoalMilestones() {
 
 function getYouthLevelProgress(youth, period = "all") {
   const difficultyCounts = getYouthDifficultyCounts(youth.id, period);
-  const milestones = getLevelGoalMilestones();
+  const milestones = getLevelGoalMilestones(youth.ward);
   const completedLevels = period === "all"
     ? getYouthCompletedAttainmentLevels(youth)
     : milestones.filter((level) => isDifficultyRequirementMet(difficultyCounts, level.requirements)).length;
@@ -2408,7 +2442,7 @@ function renderSessionProgressTracker(sessionUser) {
   }
 
   const difficultyCounts = getYouthDifficultyCounts(sessionUser.id);
-  const milestones = getLevelGoalMilestones();
+  const milestones = getLevelGoalMilestones(sessionUser.ward);
   const currentLevel = milestones.find((level) => !isDifficultyRequirementMet(difficultyCounts, level.requirements)) || milestones[milestones.length - 1];
 
   elements.sessionProgressTracker.classList.remove("hidden");
@@ -5497,7 +5531,8 @@ async function updateLevelGoalRequirements(event) {
   }
 
   const form = event.currentTarget;
-  const levelGoalRequirements = getLevelGoalRequirements().map((requirement) => ({
+  const levelGoalRequirements = getLevelGoalRequirements(sessionUser.ward).map((requirement) => ({
+    ward: sessionUser.ward,
     level: requirement.level,
     categories: CATEGORY_ORDER.reduce((categories, category) => {
       categories[category] = DIFFICULTY_ORDER.reduce((counts, difficulty) => {
@@ -5512,6 +5547,7 @@ async function updateLevelGoalRequirements(event) {
     ? await backendClient.updateLevelGoalRequirements(STORAGE_KEY, state, {
       levelGoalRequirements,
       updatedBy: sessionUser.id,
+      ward: sessionUser.ward,
       fallbackState: getFallbackState()
     })
     : { ...state, levelGoalRequirements };
@@ -5526,7 +5562,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
   const requiredGoals = (state.requiredLevelGoals || [])
     .filter((goal) => isSameWard(goal.ward, sessionUser.ward))
     .sort((left, right) => Number(left.level) - Number(right.level) || left.title.localeCompare(right.title));
-  const levelOptions = getLevelGoalMilestones()
+  const levelOptions = getLevelGoalMilestones(sessionUser.ward)
     .map((level) => `<option value="${level.index}">${getLevelLabel(level.index)}</option>`)
     .join("");
 
@@ -5590,7 +5626,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
       <h3>Required Counts By Level</h3>
       <p class="subgoal-meta">Set how many approved completed goals are required in each category and difficulty for each level. Required level goals are still separate.</p>
       <div class="level-requirement-grid">
-        ${getLevelGoalRequirements().map((requirement) => `
+        ${getLevelGoalRequirements(sessionUser.ward).map((requirement) => `
           <section class="level-requirement-card">
             <h4>${getLevelLabel(requirement.level)}</h4>
             ${CATEGORY_ORDER.map((category) => `
@@ -5622,7 +5658,7 @@ function buildRequiredLevelGoalsView(sessionUser) {
           <label>
             <span>Level</span>
             <select name="editRequiredGoalLevel">
-              ${getLevelGoalMilestones().map((level) => `<option value="${level.index}"${Number(goal.level) === level.index ? " selected" : ""}>${getLevelLabel(level.index)}</option>`).join("")}
+              ${getLevelGoalMilestones(sessionUser.ward).map((level) => `<option value="${level.index}"${Number(goal.level) === level.index ? " selected" : ""}>${getLevelLabel(level.index)}</option>`).join("")}
             </select>
           </label>
           <label>

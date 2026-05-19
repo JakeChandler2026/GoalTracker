@@ -1097,6 +1097,13 @@
           ).length === 4,
           "Pocatello Creek bishop sees all four sample goals"
         );
+        await openAdminView(reloadedDoc, "Required Goals & Levels");
+        let pocatelloRequirementsForm = reloadedDoc.getElementById("levelGoalRequirementsForm");
+        pocatelloRequirementsForm.elements.level1physicaleasy.value = "2";
+        submit(pocatelloRequirementsForm);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        pocatelloRequirementsForm = reloadedDoc.getElementById("levelGoalRequirementsForm");
+        assert(pocatelloRequirementsForm.elements.level1physicaleasy.value === "2", "Pocatello Creek bishop can customize ward level requirements");
 
         click(reloadedDoc.getElementById("logoutButton"));
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -1193,6 +1200,7 @@
           ["level1physicaleasy", "level1spiritualmedium", "level1intellectualhard", "level1socialeasy"].every((name) => Boolean(levelRequirementsForm.elements[name])),
           "Level requirement UI exposes easy, medium, and hard counts for every category"
         );
+        assert(levelRequirementsForm.elements.level1physicaleasy.value === "1", "Mapleton level requirements stay separate from Pocatello Creek changes");
         const bookOfMormonRequiredGoalCard = Array.from(reloadedDoc.querySelectorAll(".required-goal-card")).find((card) =>
           card.textContent.includes("Read the Book of Mormon")
         );

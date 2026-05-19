@@ -40,6 +40,20 @@
     return ["physical", "spiritual", "intellectual", "social"].includes(normalized) ? normalized : "spiritual";
   }
 
+  function normalizeWardKey(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/\bward\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function isSameWard(left, right) {
+    return normalizeWardKey(left) === normalizeWardKey(right);
+  }
+
   function getEnabledStatusForBackendRole(role) {
     return role === "youth_leader" ? "approved" : "verified";
   }
@@ -443,7 +457,17 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     },
     async updateLevelGoalRequirements(storageKey, appState, payload) {
       const nextState = clone(appState);
-      nextState.levelGoalRequirements = payload.levelGoalRequirements || [];
+      const targetWard = String(payload.ward || "").trim();
+      const preservedRequirements = (nextState.levelGoalRequirements || []).filter((requirement) =>
+        !targetWard || !requirement.ward || !isSameWard(requirement.ward, targetWard)
+      );
+      nextState.levelGoalRequirements = [
+        ...preservedRequirements,
+        ...(payload.levelGoalRequirements || []).map((requirement) => ({
+          ...requirement,
+          ward: requirement.ward || targetWard
+        }))
+      ];
       return nextState;
     },
     async createRequiredLevelGoal(storageKey, appState, payload) {
@@ -671,7 +695,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           client.from("template_checklist_items").select("id, template_id, title, repeat_count, sort_order"),
           client.from("required_level_goals").select("id, ward_id, level, title, summary, points, difficulty, category, deadline_days, created_by"),
           client.from("required_level_goal_checklist_items").select("id, required_goal_id, title, repeat_count, sort_order"),
-          client.from("level_goal_requirements").select("level, category, easy_required, medium_required, hard_required"),
+          client.from("level_goal_requirements").select("ward_id, level, category, easy_required, medium_required, hard_required"),
           client.from("notification_preferences").select("*"),
           client.from("user_push_tokens").select("profile_id, token, enabled, last_seen_at").eq("enabled", true),
           client.from("notifications").select("*").order("created_at", { ascending: false }).limit(100)
@@ -806,10 +830,12 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             subGoals: buildTemplateSubGoals(templateChecklistItems, template.id)
           })),
           levelGoalRequirements: Object.values(levelGoalRequirements.reduce((byLevel, requirement) => {
+            const wardName = wardNamesById.get(requirement.ward_id) || "";
             const level = Number(requirement.level || 1);
             const category = normalizeGoalCategory(requirement.category);
-            byLevel[level] = byLevel[level] || { level, categories: {} };
-            byLevel[level].categories[category] = {
+            const key = `${wardName}:${level}`;
+            byLevel[key] = byLevel[key] || { ward: wardName, level, categories: {} };
+            byLevel[key].categories[category] = {
               easy: Number(requirement.easy_required || 0),
               medium: Number(requirement.medium_required || 0),
               hard: Number(requirement.hard_required || 0)
@@ -1018,11 +1044,17 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     async updateLevelGoalRequirements(storageKey, appState, payload) {
       try {
         const client = createSupabaseClient();
+        const wardResult = await client.from("profiles").select("ward_id").eq("id", payload.updatedBy).maybeSingle();
+        const wardId = wardResult.data?.ward_id || null;
+        if (!wardId) {
+          throw new Error("A ward is required before level requirements can be updated.");
+        }
         for (const requirement of payload.levelGoalRequirements || []) {
           const categories = requirement.categories || {};
           for (const category of ["physical", "spiritual", "intellectual", "social"]) {
             const categoryRequirement = categories[category] || {};
             const result = await client.from("level_goal_requirements").upsert({
+              ward_id: wardId,
               level: Number(requirement.level),
               category,
               easy_required: Number(categoryRequirement.easy || 0),
@@ -1035,7 +1067,15 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             }
           }
         }
-        return reloadSupabaseAppState(storageKey, payload.fallbackState);
+        const nextState = await reloadSupabaseAppState(storageKey, payload.fallbackState);
+        const targetWard = String(payload.ward || "").trim();
+        nextState.levelGoalRequirements = [
+          ...(nextState.levelGoalRequirements || []).filter((requirement) =>
+            !targetWard || !requirement.ward || !isSameWard(requirement.ward, targetWard)
+          ),
+          ...(payload.levelGoalRequirements || []).map((requirement) => ({ ...requirement, ward: requirement.ward || targetWard }))
+        ];
+        return nextState;
       } catch (error) {
         console.warn("Supabase updateLevelGoalRequirements failed; falling back to snapshot bridge.", error);
         const nextState = await localStorageProvider.updateLevelGoalRequirements(storageKey, appState, payload);
