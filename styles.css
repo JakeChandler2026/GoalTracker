@@ -781,6 +781,7 @@ button:hover {
   justify-content: center;
   line-height: 1;
   text-align: center;
+  padding-top: 1px;
   border-radius: 999px;
   background: #e4f2ff;
   color: #0758d4;
