@@ -60,11 +60,21 @@ More local-hosting notes are in `hosting/README.md`.
 
 ## Run the end-to-end test
 
-Run the browser harness from PowerShell:
+Install the local test dependencies once:
 
-`powershell -ExecutionPolicy Bypass -File .\hosting\run-e2e-tests.ps1`
+`npm install`
 
-The runner starts the local static server, opens `test-harness.html` in headless Chrome or Edge, and fails if any browser assertion fails.
+Then run the full local test suite:
+
+`npm test`
+
+The browser runner starts the local static server, opens `test-harness.html`, and fails if any browser assertion fails. On failure it writes `chrome-test-output.html` and `chrome-test-screenshot.png` for diagnosis.
+
+You can also run the pieces separately:
+
+- `npm run test:syntax`
+- `npm run test:e2e`
+- `npm run test:smoke:production`
 
 ## Deploy on Vercel
 

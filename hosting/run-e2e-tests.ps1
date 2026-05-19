@@ -2,7 +2,8 @@ param(
   [int]$Port = 8080,
   [string]$BrowserPath = "",
   [string]$NodePath = "",
-  [string]$OutputPath = ""
+  [string]$OutputPath = "",
+  [string]$ScreenshotPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +16,44 @@ $bundledNodeRoot = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-prima
 $bundledNodeExe = Join-Path $bundledNodeRoot "bin\node.exe"
 $bundledNodeModules = Join-Path $bundledNodeRoot "node_modules"
 $bundledPnpmModules = Join-Path $bundledNodeModules ".pnpm"
+$localNodeModules = Join-Path $projectRoot "node_modules"
+
+function Set-TestNodePath {
+  $nodePathEntries = @()
+
+  if (Test-Path $localNodeModules) {
+    $nodePathEntries += $localNodeModules
+  }
+
+  if (Test-Path $bundledNodeModules) {
+    if (Test-Path $bundledPnpmModules) {
+      $playwrightModuleRoots = Get-ChildItem -Path $bundledPnpmModules -Directory -Filter "playwright@*" -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName "node_modules" } |
+        Where-Object { Test-Path (Join-Path $_ "playwright-core") }
+      $nodePathEntries += $playwrightModuleRoots
+    }
+    $nodePathEntries += $bundledNodeModules
+  }
+
+  if ($env:NODE_PATH) {
+    $nodePathEntries += $env:NODE_PATH
+  }
+
+  $env:NODE_PATH = ($nodePathEntries | Select-Object -Unique) -join [System.IO.Path]::PathSeparator
+}
+
+function Test-NodeDependency {
+  param(
+    [string]$NodeExecutable,
+    [string]$PackageName
+  )
+
+  $escapedPackageName = $PackageName.Replace("'", "\'")
+  & $NodeExecutable -e "require.resolve('$escapedPackageName');"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Missing Node dependency '$PackageName'. Run 'npm install' from the project root, or use the bundled Codex runtime."
+  }
+}
 
 function Find-Browser {
   param([string]$ExplicitPath)
@@ -47,7 +86,7 @@ function Find-Browser {
     }
   }
 
-  throw "Could not find Chrome, Edge, or Chromium. Pass -BrowserPath with the browser executable path."
+  return ""
 }
 
 function Find-Node {
@@ -122,28 +161,22 @@ if (-not $OutputPath) {
   $OutputPath = Join-Path $projectRoot "chrome-test-output.html"
 }
 
+if (-not $ScreenshotPath) {
+  $ScreenshotPath = Join-Path $projectRoot "chrome-test-screenshot.png"
+}
+
+$node = Find-Node -ExplicitPath $NodePath
+Set-TestNodePath
+Test-NodeDependency -NodeExecutable $node -PackageName "playwright"
+Test-NodeDependency -NodeExecutable $node -PackageName "playwright-core"
+
 Ensure-Server -ServerPort $Port
 
 $browser = Find-Browser -ExplicitPath $BrowserPath
-$node = Find-Node -ExplicitPath $NodePath
 $env:E2E_URL = "http://localhost:$Port/test-harness.html"
 $env:E2E_OUTPUT_PATH = $OutputPath
+$env:E2E_SCREENSHOT_PATH = $ScreenshotPath
 $env:E2E_BROWSER_PATH = $browser
-
-if (Test-Path $bundledNodeModules) {
-  $nodePathEntries = @()
-  if (Test-Path $bundledPnpmModules) {
-    $playwrightModuleRoots = Get-ChildItem -Path $bundledPnpmModules -Directory -Filter "playwright@*" -ErrorAction SilentlyContinue |
-      ForEach-Object { Join-Path $_.FullName "node_modules" } |
-      Where-Object { Test-Path (Join-Path $_ "playwright-core") }
-    $nodePathEntries += $playwrightModuleRoots
-  }
-  $nodePathEntries += $bundledNodeModules
-  if ($env:NODE_PATH) {
-    $nodePathEntries += $env:NODE_PATH
-  }
-  $env:NODE_PATH = ($nodePathEntries | Select-Object -Unique) -join [System.IO.Path]::PathSeparator
-}
 
 & $node $testScript
 exit $LASTEXITCODE

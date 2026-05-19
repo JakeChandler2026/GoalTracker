@@ -4,6 +4,7 @@ const { chromium } = require("playwright");
 
 const url = process.env.E2E_URL || "http://localhost:8080/test-harness.html";
 const outputPath = process.env.E2E_OUTPUT_PATH || path.join(process.cwd(), "chrome-test-output.html");
+const screenshotPath = process.env.E2E_SCREENSHOT_PATH || path.join(path.dirname(outputPath), "chrome-test-screenshot.png");
 const browserPath = process.env.E2E_BROWSER_PATH || "";
 
 (async () => {
@@ -45,7 +46,9 @@ const browserPath = process.env.E2E_BROWSER_PATH || "";
   } catch (error) {
     if (page) {
       fs.writeFileSync(outputPath, await page.content(), "utf8");
+      await page.screenshot({ path: screenshotPath, fullPage: true });
       console.error(`Output: ${outputPath}`);
+      console.error(`Screenshot: ${screenshotPath}`);
     }
     throw error;
   } finally {

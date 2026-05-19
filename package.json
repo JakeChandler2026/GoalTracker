@@ -1,0 +1,15 @@
+{
+  "name": "pathway-to-christ-goal-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static goal tracker site and browser E2E harness.",
+  "scripts": {
+    "test": "npm run test:syntax && npm run test:e2e",
+    "test:syntax": "node --check app.js && node --check auth-client.js && node --check backend-client.js && node --check storage-adapter.js && node --check supabase-browser-adapter.js && node --check tests/e2e-harness.js && node --check tests/production-smoke.js && node --check tests/verify-demo-fixture.js && node tests/verify-demo-fixture.js",
+    "test:e2e": "powershell -ExecutionPolicy Bypass -File ./hosting/run-e2e-tests.ps1",
+    "test:smoke:production": "node tests/production-smoke.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}
