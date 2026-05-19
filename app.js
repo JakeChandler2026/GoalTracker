@@ -2583,11 +2583,27 @@ function getPendingWardLeaders(ward) {
 
 function getWardAccessUsers(ward) {
   return state.users
-    .filter((user) => (user.role === "youth_leader" || user.role === "parent") && isSameWard(user.ward, ward))
+    .filter((user) => ["youth", "youth_leader", "parent"].includes(user.role) && isSameWard(user.ward, ward))
     .sort((left, right) => {
       const roleDifference = left.role.localeCompare(right.role);
       return roleDifference || left.name.localeCompare(right.name);
     });
+}
+
+function getAccountRoleLabel(role) {
+  if (role === "youth") {
+    return "Youth";
+  }
+  if (role === "youth_leader") {
+    return "Youth Leader";
+  }
+  if (role === "parent") {
+    return "Parent";
+  }
+  if (role === "bishop") {
+    return "Bishop";
+  }
+  return "Account";
 }
 
 function getAccessStatusLabel(user) {
@@ -3679,6 +3695,43 @@ async function updateWardAccessStatus(userId, approvalStatus) {
   } catch (error) {
     console.warn("Access status update failed.", error);
     window.alert(error?.message || "Access could not be updated right now.");
+  }
+}
+
+async function updateWardAccountType(form) {
+  const sessionUser = getSessionUser();
+  const userId = form.elements.userId.value;
+  const target = state.users.find((user) => user.id === userId && ["youth", "youth_leader", "parent"].includes(user.role));
+  if (!sessionUser || sessionUser.role !== "bishop" || !target || !isSameWard(sessionUser.ward, target.ward)) {
+    return;
+  }
+
+  const role = form.elements.accountRole.value;
+  const organization = role === "parent" ? "all" : form.elements.accountOrganization.value;
+  if (!["youth", "youth_leader", "parent"].includes(role)) {
+    window.alert("Choose Youth, Youth Leader, or Parent.");
+    return;
+  }
+  if (role !== "parent" && !["young_men", "young_women"].includes(organization)) {
+    window.alert("Choose Young Men or Young Women for Youth and Youth Leader accounts.");
+    return;
+  }
+
+  try {
+    const nextState = await backendClient.updateUserAccountType(STORAGE_KEY, state, {
+      userId: target.id,
+      role,
+      organization,
+      updatedBy: sessionUser.id,
+      fallbackState: getFallbackState()
+    });
+    state = normalizeState(nextState);
+    saveState();
+    activeAdminDashboardView = "ward-approval";
+    render();
+  } catch (error) {
+    console.warn("Account type update failed.", error);
+    window.alert(error?.message || "Account type could not be updated right now.");
   }
 }
 
@@ -5675,32 +5728,58 @@ function buildWardApprovalView(sessionUser, pendingLeaders, accessUsers = []) {
       : waiting
         ? ["Approve Access", "approved", "primary-button"]
         : ["Disable Access", "rejected", "secondary-button"];
+    const roleOptions = ["youth", "youth_leader", "parent"]
+      .map((role) => `<option value="${role}"${user.role === role ? " selected" : ""}>${getAccountRoleLabel(role)}</option>`)
+      .join("");
+    const organizationOptions = ["young_men", "young_women"]
+      .map((organization) => `<option value="${organization}"${user.organization === organization ? " selected" : ""}>${getOrganizationLabel(organization)}</option>`)
+      .join("");
     card.innerHTML = `
       <div class="panel-header">
         <div>
-          <p class="eyebrow">${user.role === "parent" ? "Parent" : "Youth Leader"}</p>
+          <p class="eyebrow">${getAccountRoleLabel(user.role)}</p>
           <h3>${escapeHtml(user.name)}</h3>
-          <p class="subgoal-meta">${escapeHtml(user.email || "No email set")}</p>
+          <p class="subgoal-meta">${escapeHtml(user.email || "No email set")}${user.role === "parent" ? "" : ` - ${getOrganizationLabel(user.organization)}`}</p>
         </div>
         <div class="session-badge">${getAccessStatusLabel(user)}</div>
       </div>
+      <form class="account-type-form" data-account-type-form>
+        <input name="userId" type="hidden" value="${escapeHtml(user.id)}">
+        <label>
+          Account Type
+          <select name="accountRole">${roleOptions}</select>
+        </label>
+        <label>
+          Organization
+          <select name="accountOrganization">${organizationOptions}</select>
+        </label>
+        <button class="ghost-button" type="submit">Save Account Type</button>
+      </form>
       <div class="admin-action-row"></div>
     `;
+    card.querySelector("[data-account-type-form]").addEventListener("submit", (event) => {
+      event.preventDefault();
+      updateWardAccountType(event.currentTarget);
+    });
     const actionRow = card.querySelector(".admin-action-row");
-    const primaryButton = document.createElement("button");
-    primaryButton.type = "button";
-    primaryButton.className = primaryAction[2];
-    primaryButton.textContent = primaryAction[0];
-    primaryButton.addEventListener("click", () => updateWardAccessStatus(user.id, primaryAction[1]));
-    actionRow.appendChild(primaryButton);
+    if (user.role === "youth_leader" || user.role === "parent") {
+      const primaryButton = document.createElement("button");
+      primaryButton.type = "button";
+      primaryButton.className = primaryAction[2];
+      primaryButton.textContent = primaryAction[0];
+      primaryButton.addEventListener("click", () => updateWardAccessStatus(user.id, primaryAction[1]));
+      actionRow.appendChild(primaryButton);
 
-    if (waiting) {
-      const disableButton = document.createElement("button");
-      disableButton.type = "button";
-      disableButton.className = "secondary-button";
-      disableButton.textContent = "Disable Access";
-      disableButton.addEventListener("click", () => updateWardAccessStatus(user.id, "rejected"));
-      actionRow.appendChild(disableButton);
+      if (waiting) {
+        const disableButton = document.createElement("button");
+        disableButton.type = "button";
+        disableButton.className = "secondary-button";
+        disableButton.textContent = "Disable Access";
+        disableButton.addEventListener("click", () => updateWardAccessStatus(user.id, "rejected"));
+        actionRow.appendChild(disableButton);
+      }
+    } else {
+      actionRow.innerHTML = `<span class="subgoal-meta">Youth accounts are enabled by default.</span>`;
     }
 
     accessList.appendChild(card);

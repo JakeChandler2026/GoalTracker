@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
 
-type ActionName = "create_managed_youth_account" | "update_managed_youth_profile" | "upsert_youth_parent_link" | "unlink_youth_parent_link" | "approve_youth_leader" | "update_profile_access_status" | "create_ward" | "create_bishop_account" | "assign_bishop_ward";
+type ActionName = "create_managed_youth_account" | "update_managed_youth_profile" | "upsert_youth_parent_link" | "unlink_youth_parent_link" | "approve_youth_leader" | "update_profile_access_status" | "update_profile_account_type" | "create_ward" | "create_bishop_account" | "assign_bishop_ward";
 
 type AdminActionRequest = {
   action?: ActionName;
@@ -15,6 +15,7 @@ type AdminActionRequest = {
   ward?: string;
   stake?: string;
   organization?: "young_men" | "young_women";
+  role?: "youth" | "youth_leader" | "parent";
   competitionOptIn?: boolean;
   leaderId?: string;
   userId?: string;
@@ -409,6 +410,72 @@ Deno.serve(async (request) => {
       }
 
       return jsonResponse({ profile: accessResult.data });
+    }
+
+    if (body.action === "update_profile_account_type") {
+      if (actor.role !== "bishop") {
+        return errorResponse("Only bishops can update account types.", 403);
+      }
+
+      const userId = String(body.userId || "").trim();
+      const requestedRole = body.role;
+      const requestedOrganization = requestedRole === "parent" ? "all" : body.organization;
+      if (!userId || !requestedRole || !["youth", "youth_leader", "parent"].includes(requestedRole)) {
+        return errorResponse("User id and a valid account type are required.");
+      }
+
+      if (requestedRole !== "parent" && !["young_men", "young_women"].includes(String(requestedOrganization || ""))) {
+        return errorResponse("Organization must be Young Men or Young Women for Youth and Youth Leader accounts.");
+      }
+
+      const targetResult = await adminClient
+        .from("profiles")
+        .select("id, auth_user_id, role, ward_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (targetResult.error || !targetResult.data) {
+        return errorResponse("The selected profile could not be found.", 404);
+      }
+
+      const target = targetResult.data;
+      if (!["youth", "youth_leader", "parent"].includes(target.role)) {
+        return errorResponse("Only Youth, Youth Leader, and Parent account types can be changed here.", 400);
+      }
+
+      if (target.ward_id !== actor.ward_id) {
+        return errorResponse("Bishops can only update account types inside their own ward.", 403);
+      }
+
+      const approvalStatus = requestedRole === "youth_leader" ? "approved" : "verified";
+      const updateResult = await adminClient
+        .from("profiles")
+        .update({
+          role: requestedRole,
+          organization: requestedRole === "parent" ? "all" : requestedOrganization,
+          competition_opt_in: requestedRole === "youth",
+          approval_status: approvalStatus,
+          approved_by: actor.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq("id", target.id)
+        .select("id, auth_user_id, role, organization, approval_status")
+        .single();
+
+      if (updateResult.error) {
+        return errorResponse(updateResult.error.message || "Unable to update account type.", 500);
+      }
+
+      if (target.auth_user_id) {
+        await adminClient.auth.admin.updateUserById(target.auth_user_id, {
+          user_metadata: {
+            role: requestedRole,
+            organization: requestedRole === "parent" ? "all" : requestedOrganization
+          }
+        });
+      }
+
+      return jsonResponse({ profile: updateResult.data });
     }
 
     if (body.action === "create_managed_youth_account") {

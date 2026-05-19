@@ -40,6 +40,10 @@
     return ["physical", "spiritual", "intellectual", "social"].includes(normalized) ? normalized : "spiritual";
   }
 
+  function getEnabledStatusForBackendRole(role) {
+    return role === "youth_leader" ? "approved" : "verified";
+  }
+
 function mergeSnapshotProgressData(relationalState, snapshotState) {
     const nextState = clone(relationalState);
     const snapshotGoalsById = new Map((snapshotState?.goals || []).map((goal) => [goal.id, goal]));
@@ -526,6 +530,17 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       const user = nextState.users.find((item) => item.id === payload.userId);
       if (user) {
         user.approvalStatus = payload.approvalStatus;
+      }
+      return nextState;
+    },
+    async updateUserAccountType(storageKey, appState, payload) {
+      const nextState = clone(appState);
+      const user = nextState.users.find((item) => item.id === payload.userId);
+      if (user) {
+        user.role = payload.role;
+        user.organization = payload.role === "parent" ? "all" : payload.organization;
+        user.competitionOptIn = payload.role === "youth" ? user.competitionOptIn !== false : false;
+        user.approvalStatus = getEnabledStatusForBackendRole(payload.role);
       }
       return nextState;
     },
@@ -1208,6 +1223,15 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
       });
       return reloadSupabaseAppState(storageKey, payload.fallbackState);
     },
+    async updateUserAccountType(storageKey, appState, payload) {
+      const client = createSupabaseClient();
+      await invokeAdminUserManagement(client, "update_profile_account_type", {
+        userId: payload.userId,
+        role: payload.role,
+        organization: payload.organization
+      });
+      return reloadSupabaseAppState(storageKey, payload.fallbackState);
+    },
     async createWard(storageKey, appState, payload) {
       const client = createSupabaseClient();
       await invokeAdminUserManagement(client, "create_ward", {
@@ -1296,6 +1320,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
     },
     async updateUserAccessStatus(storageKey, appState, payload) {
       return (activeProvider.updateUserAccessStatus || localStorageProvider.updateUserAccessStatus)(storageKey, appState, payload);
+    },
+    async updateUserAccountType(storageKey, appState, payload) {
+      return (activeProvider.updateUserAccountType || localStorageProvider.updateUserAccountType)(storageKey, appState, payload);
     },
     async createWard(storageKey, appState, payload) {
       return (activeProvider.createWard || localStorageProvider.createWard)(storageKey, appState, payload);

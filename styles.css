@@ -707,6 +707,13 @@ button:hover {
   background: #f8fbff;
 }
 
+.account-type-form {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
 .youth-goal-progress-list {
   display: grid;
   gap: 8px;
@@ -1362,7 +1369,8 @@ button:hover {
   }
 
   .leaderboard-row,
-  .shared-goal-row {
+  .shared-goal-row,
+  .account-type-form {
     grid-template-columns: 1fr;
     align-items: stretch;
   }

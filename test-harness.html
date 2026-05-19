@@ -1160,6 +1160,21 @@
         );
 
         await openAdminView(reloadedDoc, "Ward Approval");
+        const requiredYouthAccessCard = Array.from(reloadedDoc.querySelectorAll(".access-review-card")).find((card) =>
+          card.textContent.includes("Required Goal Youth")
+        );
+        assert(Boolean(requiredYouthAccessCard), "Bishop can see youth accounts in Ward Approval");
+        const accountTypeForm = requiredYouthAccessCard.querySelector("[data-account-type-form]");
+        accountTypeForm.elements.accountRole.value = "parent";
+        submit(accountTypeForm);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(
+          Array.from(reloadedDoc.querySelectorAll(".access-review-card")).some((card) =>
+            card.textContent.includes("Required Goal Youth") && card.textContent.includes("Parent")
+          ),
+          "Bishop can change an account type from youth to parent"
+        );
+
         const newLeaderAccessCard = Array.from(reloadedDoc.querySelectorAll(".access-review-card")).find((card) =>
           card.textContent.includes("New Leader")
         );
