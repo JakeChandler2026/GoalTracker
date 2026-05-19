@@ -742,8 +742,10 @@ button:hover {
 }
 
 .goal-progress-title {
+  display: inline;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .youth-goal-progress-controls {
