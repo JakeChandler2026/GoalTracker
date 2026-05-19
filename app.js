@@ -481,6 +481,8 @@ const elements = {
   loginForm: document.getElementById("loginForm"),
   registerForm: document.getElementById("registerForm"),
   registerWard: document.getElementById("registerWard"),
+  registerNewWardField: document.getElementById("registerNewWardField"),
+  registerNewWard: document.getElementById("registerNewWard"),
   registerOrganizationField: document.getElementById("registerOrganizationField"),
   registerCompetitionField: document.getElementById("registerCompetitionField"),
   username: document.getElementById("username"),
@@ -2722,6 +2724,7 @@ function renderRegisterWardOptions() {
     return;
   }
 
+  const canCreateWard = activeRole === "bishop";
   const wardOptions = (state.wards || [])
     .filter((ward) => ward.name && normalizeWardKey(ward.name) !== "all")
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -2729,10 +2732,23 @@ function renderRegisterWardOptions() {
   elements.registerWard.innerHTML = `
     <option value="">Choose your ward</option>
     ${wardOptions.map((ward) => `<option value="${escapeHtml(ward.id)}">${escapeHtml(ward.name)}</option>`).join("")}
+    ${canCreateWard ? `<option value="__new_ward__">Add a new ward...</option>` : ""}
   `;
 
-  if (wardOptions.some((ward) => ward.id === currentValue)) {
+  if (wardOptions.some((ward) => ward.id === currentValue) || (canCreateWard && currentValue === "__new_ward__")) {
     elements.registerWard.value = currentValue;
+  }
+  updateRegisterNewWardVisibility();
+}
+
+function updateRegisterNewWardVisibility() {
+  const isCreatingWard = activeRole === "bishop" && elements.registerWard?.value === "__new_ward__";
+  elements.registerNewWardField?.classList.toggle("hidden", !isCreatingWard);
+  if (elements.registerNewWard) {
+    elements.registerNewWard.required = isCreatingWard;
+    if (!isCreatingWard) {
+      elements.registerNewWard.value = "";
+    }
   }
 }
 
@@ -2743,6 +2759,13 @@ function getSelectedRegisterWard() {
   }
 
   if (field.tagName === "SELECT") {
+    if (field.value === "__new_ward__") {
+      const newWardName = elements.registerNewWard?.value.trim() || "";
+      return {
+        ward: newWardName,
+        wardId: ""
+      };
+    }
     const option = field.selectedOptions?.[0] || null;
     return {
       ward: option && option.value ? option.textContent.trim() : "",
@@ -6028,6 +6051,7 @@ elements.signInModeButton.addEventListener("click", () => setUserAuthMode("signi
 elements.createAccountModeButton.addEventListener("click", () => setUserAuthMode("create"));
 elements.loginForm.addEventListener("submit", login);
 elements.registerForm.addEventListener("submit", registerUser);
+elements.registerWard?.addEventListener("change", updateRegisterNewWardVisibility);
 elements.logoutButton.addEventListener("click", logout);
 elements.accountMenuButton?.addEventListener("click", toggleAccountMenu);
 

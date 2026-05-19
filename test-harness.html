@@ -1065,6 +1065,10 @@
 
         click(reloadedDoc.getElementById("bishopTab"));
         click(reloadedDoc.getElementById("createAccountModeButton"));
+        assert(
+          Array.from(reloadedDoc.getElementById("registerWard").options).some((option) => option.textContent.includes("Pocatello Creek Ward")),
+          "Bishop signup ward dropdown includes Pocatello Creek Ward"
+        );
         reloadedDoc.getElementById("registerName").value = "Jacob Chandler";
         reloadedDoc.getElementById("registerEmail").value = "jacob.chandler@example.com";
         chooseRegisterWard(reloadedDoc, "Pocatello Creek Ward");
@@ -1078,6 +1082,26 @@
           normalizedWardYouthCards.some((card) => card.textContent.includes("Sophie Martin")),
           "Bishop stored as Pocatello Creek sees youth stored as Pocatello Creek Ward"
         );
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("bishopTab"));
+        click(reloadedDoc.getElementById("createAccountModeButton"));
+        assert(
+          Array.from(reloadedDoc.getElementById("registerWard").options).some((option) => option.value === "__new_ward__"),
+          "Bishop signup can choose to add a new ward"
+        );
+        reloadedDoc.getElementById("registerName").value = "New Ward Bishop";
+        reloadedDoc.getElementById("registerEmail").value = "new.ward.bishop@example.com";
+        reloadedDoc.getElementById("registerWard").value = "__new_ward__";
+        change(reloadedDoc.getElementById("registerWard"));
+        assert(!reloadedDoc.getElementById("registerNewWardField").classList.contains("hidden"), "New ward name field appears for bishop signup");
+        reloadedDoc.getElementById("registerNewWard").value = "Cedar Bench Ward";
+        reloadedDoc.getElementById("registerPassword").value = "newwardpass";
+        submit(reloadedDoc.getElementById("registerForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(reloadedDoc.getElementById("sessionTitle").textContent.includes("New Ward Bishop"), "New bishop can create an account for a new ward");
+        assert(reloadedDoc.getElementById("dashboardTitle").textContent.includes("ward board"), "New bishop lands on their ward board");
         click(reloadedDoc.getElementById("logoutButton"));
         await new Promise((resolve) => setTimeout(resolve, 150));
 
