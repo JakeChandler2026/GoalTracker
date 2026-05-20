@@ -499,6 +499,57 @@ button:hover {
   margin-bottom: 18px;
 }
 
+.goal-health-dashboard {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.goal-health-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.goal-health-summary article,
+.goal-health-row {
+  border: 1px solid rgba(27, 28, 31, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 12px;
+}
+
+.goal-health-summary article {
+  display: grid;
+  gap: 4px;
+}
+
+.goal-health-summary strong {
+  font-size: 1.5rem;
+}
+
+.goal-health-summary span,
+.goal-health-row span {
+  color: var(--muted);
+}
+
+.goal-health-list {
+  display: grid;
+  gap: 8px;
+}
+
+.goal-health-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.goal-reflection-panel {
+  display: grid;
+  gap: 8px;
+}
+
 .summary-comparison-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1369,6 +1420,7 @@ button:hover {
 
   .admin-dashboard-nav,
   .admin-summary-grid,
+  .goal-health-summary,
   .managed-youth-grid {
     grid-template-columns: 1fr;
   }

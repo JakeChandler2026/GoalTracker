@@ -420,6 +420,7 @@ const firstRunState = {
       id: "t1",
       title: "Daily Scripture Habit",
       summary: "Build a steady scripture study routine over three months.",
+      reflectionPrompt: "What did you learn about Jesus Christ or yourself as you built this scripture habit?",
       points: 100,
       difficulty: "hard",
       category: "spiritual",
@@ -434,6 +435,7 @@ const firstRunState = {
       id: "t-pending-service",
       title: "Pending Service Template",
       summary: "A sample optional template that must be reviewed before youth can use it.",
+      reflectionPrompt: "Who did your service bless, and what did you notice about their needs?",
       points: 0,
       difficulty: "easy",
       category: "social",
@@ -452,6 +454,7 @@ const firstRunState = {
       level: 1,
       title: "Read the Book of Mormon",
       summary: "Read the Book of Mormon in its entirety in less than one year.",
+      reflectionPrompt: "What truth from the Book of Mormon most changed how you want to live?",
       points: 0,
       difficulty: "hard",
       category: "spiritual",
@@ -464,6 +467,7 @@ const firstRunState = {
       level: 1,
       title: "Read the Book of Mormon",
       summary: "Read the Book of Mormon in its entirety in less than one year.",
+      reflectionPrompt: "What truth from the Book of Mormon most changed how you want to live?",
       points: 0,
       difficulty: "hard",
       category: "spiritual",
@@ -796,6 +800,9 @@ function normalizeState(rawState) {
       sourceGoalId: goal.sourceGoalId || goal.source_goal_id || null,
       requiredGoalDefinitionId: goal.requiredGoalDefinitionId || null,
       requiredGoalLevel: Number.isFinite(Number(goal.requiredGoalLevel)) ? Number(goal.requiredGoalLevel) : null,
+      reflectionPrompt: String(goal.reflectionPrompt || "").trim(),
+      reflectionResponse: String(goal.reflectionResponse || "").trim(),
+      createdAt: normalizeDateString(goal.createdAt) || goal.goalApprovedAt || getTodayDateString(),
       goalApproved: planApproved,
       goalApprovedBy: goal.goalApprovedBy || (planApproved ? goal.leaderApprovedBy || "Leader" : null),
       goalApprovedAt: goal.goalApprovedAt || (planApproved ? goal.completedAt || null : null),
@@ -825,6 +832,7 @@ function normalizeState(rawState) {
     difficulty: normalizeDifficulty(template.difficulty, template.points),
     category: normalizeGoalCategory(template.category),
     durationDays: normalizeDurationDays(template.durationDays),
+    reflectionPrompt: String(template.reflectionPrompt || "").trim(),
     templateApproved: template.templateApproved !== false,
     templateApprovedBy: template.templateApprovedBy || null,
     templateApprovedAt: normalizeDateString(template.templateApprovedAt),
@@ -845,6 +853,7 @@ function normalizeState(rawState) {
     difficulty: normalizeDifficulty(goal.difficulty, goal.points),
     category: normalizeGoalCategory(goal.category),
     deadlineDays: Number.isFinite(Number(goal.deadlineDays)) ? Math.max(1, Number(goal.deadlineDays)) : 30,
+    reflectionPrompt: String(goal.reflectionPrompt || "").trim(),
     subGoals: (goal.subGoals || []).map((subGoal) => ({
       id: subGoal.id || createId("required-subgoal"),
       title: String(subGoal.title || "").trim(),
@@ -1515,6 +1524,8 @@ function buildGoalFromTemplate(template, userId, deadline = addDays(getTodayDate
     userId,
     title: template.title,
     summary: template.summary,
+    reflectionPrompt: template.reflectionPrompt || "",
+    reflectionResponse: "",
     points: normalizePointValue(template.points),
     difficulty: normalizeDifficulty(template.difficulty, template.points),
     category: normalizeGoalCategory(template.category),
@@ -1524,6 +1535,7 @@ function buildGoalFromTemplate(template, userId, deadline = addDays(getTodayDate
     goalApproved: Boolean(sessionUser && isWardAdmin(sessionUser)),
     goalApprovedBy: sessionUser && isWardAdmin(sessionUser) ? sessionUser.name : null,
     goalApprovedAt: sessionUser && isWardAdmin(sessionUser) ? getTodayDateString() : null,
+    createdAt: getTodayDateString(),
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -1550,6 +1562,8 @@ function buildGoalFromRequiredLevelGoal(requiredGoal, youth) {
     userId: youth.id,
     title: requiredGoal.title,
     summary: requiredGoal.summary,
+    reflectionPrompt: requiredGoal.reflectionPrompt || "",
+    reflectionResponse: "",
     points: normalizePointValue(requiredGoal.points),
     difficulty: normalizeDifficulty(requiredGoal.difficulty, requiredGoal.points),
     category: normalizeGoalCategory(requiredGoal.category),
@@ -1561,6 +1575,7 @@ function buildGoalFromRequiredLevelGoal(requiredGoal, youth) {
     goalApproved: true,
     goalApprovedBy: "Bishop Required Goal",
     goalApprovedAt: getTodayDateString(),
+    createdAt: getTodayDateString(),
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -1647,6 +1662,8 @@ function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline &&
     userId,
     title: sourceGoal.title,
     summary: sourceGoal.summary,
+    reflectionPrompt: sourceGoal.reflectionPrompt || "",
+    reflectionResponse: "",
     points: normalizePointValue(sourceGoal.points),
     difficulty: normalizeDifficulty(sourceGoal.difficulty, sourceGoal.points),
     category: normalizeGoalCategory(sourceGoal.category),
@@ -1656,6 +1673,7 @@ function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline &&
     goalApproved: Boolean(sessionUser && isWardAdmin(sessionUser)),
     goalApprovedBy: sessionUser && isWardAdmin(sessionUser) ? sessionUser.name : null,
     goalApprovedAt: sessionUser && isWardAdmin(sessionUser) ? getTodayDateString() : null,
+    createdAt: getTodayDateString(),
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -1765,6 +1783,17 @@ async function updateGoalDetails(goalId, form) {
   await persistGoal(goal);
 }
 
+async function saveGoalReflection(goalId, form) {
+  const sessionUser = getSessionUser();
+  const goal = state.goals.find((item) => item.id === goalId);
+  if (!sessionUser || sessionUser.role !== "youth" || !goal || goal.userId !== sessionUser.id) {
+    return;
+  }
+
+  goal.reflectionResponse = String(form.elements.goalReflectionResponse.value || "").trim();
+  await persistGoal(goal);
+}
+
 async function updateTemplateDetails(templateId, form) {
   const template = state.templates.find((item) => item.id === templateId);
   if (!template) {
@@ -1776,6 +1805,7 @@ async function updateTemplateDetails(templateId, form) {
   const difficulty = normalizeDifficulty(form.elements.editTemplateDifficulty?.value || template.difficulty, template.points);
   const category = normalizeGoalCategory(form.elements.editTemplateCategory?.value || template.category);
   const durationDays = normalizeDurationDays(form.elements.editTemplateDurationDays?.value || template.durationDays);
+  const reflectionPrompt = form.elements.editTemplateReflectionPrompt?.value.trim() || "";
   const subGoals = Array.from(form.querySelectorAll(".editable-subgoal-row")).map((row, index) => ({
     id: template.subGoals[index]?.id || createId("template-subgoal"),
     title: row.querySelector("[name='editableSubGoalTitle']").value.trim(),
@@ -1792,6 +1822,7 @@ async function updateTemplateDetails(templateId, form) {
   template.difficulty = difficulty;
   template.category = category;
   template.durationDays = durationDays;
+  template.reflectionPrompt = reflectionPrompt;
   template.subGoals = subGoals;
   activeTemplateId = null;
   await persistTemplate(template);
@@ -1851,6 +1882,42 @@ function getGoalProgress(goal) {
   const totalChecks = goal.subGoals.reduce((sum, subGoal) => sum + subGoal.repeatCount, 0);
   const completedChecks = goal.subGoals.reduce((sum, subGoal) => sum + getCompletedCount(subGoal), 0);
   return totalChecks ? Math.round((completedChecks / totalChecks) * 100) : 0;
+}
+
+function getGoalStartDate(goal) {
+  return normalizeDateString(goal.createdAt) || normalizeDateString(goal.goalApprovedAt) || getTodayDateString();
+}
+
+function getGoalPacingStatus(goal, referenceDateString = getTodayDateString()) {
+  const progress = getGoalProgress(goal);
+  if (goal.leaderApproved) {
+    return { label: "Complete", className: "approved", expectedProgress: 100, daysRemaining: 0 };
+  }
+  if (!goal.goalApproved) {
+    return { label: "Waiting for approval", className: "pending", expectedProgress: 0, daysRemaining: null };
+  }
+
+  const startDate = new Date(`${getGoalStartDate(goal)}T00:00:00`);
+  const deadlineDate = new Date(`${normalizeDateString(goal.deadline)}T00:00:00`);
+  const referenceDate = new Date(`${referenceDateString}T00:00:00`);
+  const totalDays = Math.max(1, Math.ceil((deadlineDate - startDate) / 86400000));
+  const elapsedDays = Math.max(0, Math.ceil((referenceDate - startDate) / 86400000));
+  const expectedProgress = Math.min(100, Math.round((elapsedDays / totalDays) * 100));
+  const daysRemaining = Math.ceil((deadlineDate - referenceDate) / 86400000);
+
+  if (isGoalClosed(goal)) {
+    return { label: "Overdue", className: "overdue", expectedProgress, daysRemaining };
+  }
+  if (progress + 15 < expectedProgress) {
+    return { label: "Behind pace", className: "overdue", expectedProgress, daysRemaining };
+  }
+  if (daysRemaining <= 7 && progress < 100) {
+    return { label: "Due soon", className: "pending", expectedProgress, daysRemaining };
+  }
+  if (progress >= expectedProgress + 10) {
+    return { label: "Ahead of pace", className: "approved", expectedProgress, daysRemaining };
+  }
+  return { label: "On pace", className: "in-progress", expectedProgress, daysRemaining };
 }
 
 function isGoalEarnedInRange(goal, periodRange = null) {
@@ -3277,6 +3344,8 @@ async function addGoal(event) {
     userId: sessionUser.id,
     title,
     summary,
+    reflectionPrompt: "",
+    reflectionResponse: "",
     points: 0,
     category,
     difficulty,
@@ -3284,6 +3353,7 @@ async function addGoal(event) {
     goalApproved: false,
     goalApprovedBy: null,
     goalApprovedAt: null,
+    createdAt: getTodayDateString(),
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -3351,6 +3421,8 @@ async function createManagedGoal(event) {
     userId: targetYouth.id,
     title,
     summary,
+    reflectionPrompt: "",
+    reflectionResponse: "",
     points: 0,
     difficulty,
     category,
@@ -3358,6 +3430,7 @@ async function createManagedGoal(event) {
     goalApproved: true,
     goalApprovedBy: sessionUser.name,
     goalApprovedAt: getTodayDateString(),
+    createdAt: getTodayDateString(),
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
@@ -3412,6 +3485,7 @@ async function createTemplate(event) {
   const form = event.currentTarget;
   const title = form.elements.templateTitle.value.trim();
   const summary = form.elements.templateSummary.value.trim();
+  const reflectionPrompt = form.elements.templateReflectionPrompt?.value.trim() || "";
   const draftChecklistItems = readDraftChecklistItems(form);
 
   if (!title || !summary || !draftChecklistItems.length) {
@@ -3423,6 +3497,7 @@ async function createTemplate(event) {
     id: createId("template"),
     title,
     summary,
+    reflectionPrompt,
     points: normalizePointValue(form.elements.templatePoints?.value || 0),
     difficulty: normalizeDifficulty(form.elements.templateDifficulty?.value || "medium", form.elements.templatePoints?.value || 0),
     category: normalizeGoalCategory(form.elements.templateCategory?.value || "spiritual"),
@@ -3982,6 +4057,7 @@ function buildGoalCard(goal, mode) {
   const sessionUser = getSessionUser();
   const progress = getGoalProgress(goal);
   const status = getGoalStatus(goal);
+  const pacing = getGoalPacingStatus(goal);
   const goalClosed = isGoalClosed(goal);
   const requiredGoalLabel = goal.requiredGoalLevel ? `Required ${getLevelLabel(goal.requiredGoalLevel)}` : "";
 
@@ -4016,6 +4092,37 @@ function buildGoalCard(goal, mode) {
     ? `Deadline passed on ${formatDeadline(goal.deadline)}. A Youth leader or bishop must approve an extension.`
     : `Deadline: ${formatDeadline(goal.deadline)}`;
   actions.appendChild(deadlineMeta);
+
+  const pacingMeta = document.createElement("p");
+  pacingMeta.className = `goal-pacing goal-status ${pacing.className}`;
+  pacingMeta.textContent = `${pacing.label}${pacing.daysRemaining !== null && pacing.daysRemaining >= 0 ? ` - ${pacing.daysRemaining} day${pacing.daysRemaining === 1 ? "" : "s"} left` : ""}`;
+  actions.appendChild(pacingMeta);
+
+  if (goal.reflectionPrompt) {
+    const reflection = document.createElement("section");
+    reflection.className = "goal-reflection-panel";
+    if (mode === "youth" && goal.goalApproved && !goalClosed) {
+      reflection.innerHTML = `
+        <form class="inline-form goal-reflection-form">
+          <label>
+            <span>Reflection</span>
+            <textarea name="goalReflectionResponse" placeholder="${escapeHtml(goal.reflectionPrompt)}">${escapeHtml(goal.reflectionResponse || "")}</textarea>
+          </label>
+          <button class="secondary-button" type="submit">Save Reflection</button>
+        </form>
+      `;
+      reflection.querySelector(".goal-reflection-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        saveGoalReflection(goal.id, event.currentTarget);
+      });
+    } else {
+      reflection.innerHTML = `
+        <p class="subgoal-meta"><strong>Reflection prompt:</strong> ${escapeHtml(goal.reflectionPrompt)}</p>
+        ${goal.reflectionResponse ? `<p class="leader-summary">${escapeHtml(goal.reflectionResponse)}</p>` : `<p class="subgoal-meta">No reflection submitted yet.</p>`}
+      `;
+    }
+    actions.appendChild(reflection);
+  }
 
   const useCompactChapterGrid = goal.subGoals.length > 40 && goal.subGoals.every((subGoal) => subGoal.repeatCount === 1);
   if (useCompactChapterGrid) {
@@ -4994,6 +5101,10 @@ function buildTemplateWorkspace(template) {
         <textarea name="templateSummary" placeholder="Describe what this goal template is for." required></textarea>
       </label>
       <label>
+        <span>Reflection prompt</span>
+        <textarea name="templateReflectionPrompt" placeholder="What should the youth reflect on when this goal is completed?"></textarea>
+      </label>
+      <label>
         <span>Default category</span>
         <select name="templateCategory">${buildCategoryOptions("spiritual")}</select>
       </label>
@@ -5040,6 +5151,10 @@ function buildTemplateWorkspace(template) {
       <label>
         <span>Template summary</span>
         <textarea name="editTemplateSummary">${template.summary}</textarea>
+      </label>
+      <label>
+        <span>Reflection prompt</span>
+        <textarea name="editTemplateReflectionPrompt" placeholder="What should the youth reflect on when this goal is completed?">${escapeHtml(template.reflectionPrompt || "")}</textarea>
       </label>
       <label>
         <span>Default category</span>
@@ -5164,6 +5279,73 @@ function buildAdminDashboardNav(sessionUser, counts = {}) {
     button.addEventListener("click", () => setActiveAdminDashboardView(button.dataset.adminView));
   });
   return nav;
+}
+
+function getMostRecentGoalActivityDate(goal) {
+  const completionDates = goal.subGoals
+    .flatMap((subGoal) => subGoal.completedUnits || [])
+    .filter(Boolean)
+    .sort();
+  return completionDates.at(-1) || goal.createdAt || goal.goalApprovedAt || null;
+}
+
+function buildGoalHealthDashboard(goals = []) {
+  const actionableGoals = goals.filter((goal) => !goal.leaderApproved);
+  const overdueGoals = actionableGoals.filter((goal) => isGoalClosed(goal));
+  const behindGoals = actionableGoals.filter((goal) => getGoalPacingStatus(goal).label === "Behind pace");
+  const readyGoals = actionableGoals.filter((goal) => goal.goalApproved && getGoalProgress(goal) === 100);
+  const pendingPlanGoals = actionableGoals.filter((goal) => !goal.goalApproved);
+  const inactiveGoals = actionableGoals.filter((goal) => {
+    const lastActivity = getMostRecentGoalActivityDate(goal);
+    return !lastActivity || addDays(lastActivity, 14) < getTodayDateString();
+  });
+  const priorityRows = [
+    ...overdueGoals.map((goal) => ({ goal, label: "Overdue" })),
+    ...behindGoals.filter((goal) => !overdueGoals.includes(goal)).map((goal) => ({ goal, label: "Behind pace" })),
+    ...readyGoals.map((goal) => ({ goal, label: "Ready for approval" })),
+    ...pendingPlanGoals.map((goal) => ({ goal, label: "Needs goal approval" })),
+    ...inactiveGoals
+      .filter((goal) => !overdueGoals.includes(goal) && !behindGoals.includes(goal) && !readyGoals.includes(goal) && !pendingPlanGoals.includes(goal))
+      .map((goal) => ({ goal, label: "No progress in 14 days" }))
+  ].slice(0, 8);
+
+  const section = document.createElement("section");
+  section.className = "admin-overview-section goal-health-dashboard";
+  section.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Leadership Dashboard</p>
+        <h3>Goal Health</h3>
+        <p class="subgoal-meta">Use pacing, inactivity, and approval status to spot youth who may need encouragement.</p>
+      </div>
+      <div class="session-badge">${priorityRows.length} action items</div>
+    </div>
+    <div class="goal-health-summary">
+      <article><strong>${overdueGoals.length}</strong><span>overdue</span></article>
+      <article><strong>${behindGoals.length}</strong><span>behind pace</span></article>
+      <article><strong>${readyGoals.length}</strong><span>ready to approve</span></article>
+      <article><strong>${inactiveGoals.length}</strong><span>inactive 14+ days</span></article>
+    </div>
+    <div class="goal-health-list">
+      ${priorityRows.length ? priorityRows.map(({ goal, label }) => {
+        const owner = state.users.find((user) => user.id === goal.userId);
+        const pacing = getGoalPacingStatus(goal);
+        return `
+          <div class="goal-health-row">
+            <div>
+              <strong>${escapeHtml(owner?.name || "Unknown youth")} - ${escapeHtml(goal.title)}</strong>
+              <span class="subgoal-meta">${escapeHtml(label)} - ${getGoalProgress(goal)}% complete - ${escapeHtml(pacing.label)}</span>
+            </div>
+            <button class="ghost-button compact-card-button" type="button" data-health-goal-id="${escapeHtml(goal.id)}">Open</button>
+          </div>
+        `;
+      }).join("") : `<p class="subgoal-meta">No urgent goal health items right now.</p>`}
+    </div>
+  `;
+  section.querySelectorAll("[data-health-goal-id]").forEach((button) => {
+    button.addEventListener("click", () => openGoalEditor(button.dataset.healthGoalId));
+  });
+  return section;
 }
 
 function buildManagedYouthOverview(sessionUser, managedYouth) {
@@ -5518,6 +5700,7 @@ async function createRequiredLevelGoal(event) {
     level: Number(form.elements.requiredGoalLevel.value),
     title: form.elements.requiredGoalTitle.value.trim(),
     summary: form.elements.requiredGoalSummary.value.trim(),
+    reflectionPrompt: form.elements.requiredGoalReflectionPrompt?.value.trim() || "",
     points: 0,
     category: normalizeGoalCategory(form.elements.requiredGoalCategory?.value || "spiritual"),
     difficulty: normalizeDifficulty(form.elements.requiredGoalDifficulty?.value || "medium"),
@@ -5575,6 +5758,7 @@ async function updateRequiredLevelGoal(requiredGoalId, form) {
   requiredGoal.level = Number(form.elements.editRequiredGoalLevel.value);
   requiredGoal.title = title;
   requiredGoal.summary = summary;
+  requiredGoal.reflectionPrompt = form.elements.editRequiredGoalReflectionPrompt?.value.trim() || "";
   requiredGoal.points = 0;
   requiredGoal.category = normalizeGoalCategory(form.elements.editRequiredGoalCategory?.value || requiredGoal.category);
   requiredGoal.difficulty = normalizeDifficulty(form.elements.editRequiredGoalDifficulty?.value || requiredGoal.difficulty);
@@ -5690,6 +5874,10 @@ function buildRequiredLevelGoalsView(sessionUser) {
         <textarea name="requiredGoalSummary" placeholder="Describe the required goal." required></textarea>
       </label>
       <label>
+        <span>Reflection prompt</span>
+        <textarea name="requiredGoalReflectionPrompt" placeholder="What should the youth reflect on when this required goal is completed?"></textarea>
+      </label>
+      <label>
         <span>Timeline after level assignment</span>
         <input name="requiredGoalDeadlineDays" type="number" min="1" step="1" value="30" required>
       </label>
@@ -5764,6 +5952,10 @@ function buildRequiredLevelGoalsView(sessionUser) {
           <label>
             <span>Goal summary</span>
             <textarea name="editRequiredGoalSummary" required>${escapeHtml(goal.summary)}</textarea>
+          </label>
+          <label>
+            <span>Reflection prompt</span>
+            <textarea name="editRequiredGoalReflectionPrompt">${escapeHtml(goal.reflectionPrompt || "")}</textarea>
           </label>
           <label>
             <span>Timeline after level assignment</span>
@@ -6098,6 +6290,7 @@ function renderLeaderDashboard(sessionUser) {
 
   if (activeAdminDashboardView === "overview") {
     elements.leaderDashboard.appendChild(buildAdminSummaryCards(sessionUser, goals, managedYouth, approvedLeaders, pendingLeaders));
+    elements.leaderDashboard.appendChild(buildGoalHealthDashboard(goals));
     elements.leaderDashboard.appendChild(buildWeeklyProgressEmailCard(sessionUser));
     elements.leaderDashboard.appendChild(buildManagedYouthOverview(sessionUser, managedYouth));
     return;

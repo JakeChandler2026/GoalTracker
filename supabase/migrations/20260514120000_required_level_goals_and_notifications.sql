@@ -4,6 +4,7 @@ create table if not exists public.required_level_goals (
   level integer not null check (level between 1 and 3),
   title text not null,
   summary text not null,
+  reflection_prompt text not null default '',
   points integer not null default 0 check (points >= 0),
   deadline_days integer not null default 30 check (deadline_days > 0),
   created_by uuid not null references public.profiles(id) on delete restrict,

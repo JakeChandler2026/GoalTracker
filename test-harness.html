@@ -1047,6 +1047,12 @@
           assignedTemplateGoalCard.querySelector(".goal-deadline").textContent.includes(formatHarnessDate(addDays(new Date().toISOString().slice(0, 10), 90))),
           "Assigned template goal deadline uses the template default timeline from assignment date"
         );
+        assert(assignedTemplateGoalCard.querySelector(".goal-pacing").textContent.includes("On pace"), "Goal cards show pacing status");
+        const reflectionForm = assignedTemplateGoalCard.querySelector(".goal-reflection-form");
+        assert(Boolean(reflectionForm), "Template-assigned goals show reflection prompts to youth");
+        reflectionForm.elements.goalReflectionResponse.value = "I learned that steady scripture study helps me feel closer to Christ.";
+        submit(reflectionForm);
+        await new Promise((resolve) => setTimeout(resolve, 250));
         assert(youthGoalTitles.includes("Leader Assigned Goal Updated"), "Leader-created goal appears for the target youth");
         const reopenedYouthCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
           card.querySelector(".goal-title").textContent === "Scripture Study Goal"
@@ -1101,6 +1107,11 @@
         submit(reloadedDoc.getElementById("loginForm"));
         await new Promise((resolve) => setTimeout(resolve, 250));
         await openAdminView(reloadedDoc, "Overview");
+        assert(
+          reloadedDoc.querySelector(".goal-health-dashboard")?.textContent.includes("Goal Health") &&
+            reloadedDoc.querySelector(".goal-health-dashboard")?.textContent.includes("behind pace"),
+          "Leadership dashboard shows goal health and pacing summaries"
+        );
 
         const pocatelloBishopYouthCards = Array.from(reloadedDoc.querySelectorAll(".managed-youth-card"));
         assert(

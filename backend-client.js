@@ -75,6 +75,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         sourceGoalId: snapshotGoal?.sourceGoalId ?? goal.sourceGoalId ?? null,
         requiredGoalDefinitionId: snapshotGoal?.requiredGoalDefinitionId ?? goal.requiredGoalDefinitionId ?? null,
         requiredGoalLevel: snapshotGoal?.requiredGoalLevel ?? goal.requiredGoalLevel ?? null,
+        reflectionPrompt: snapshotGoal?.reflectionPrompt ?? goal.reflectionPrompt ?? "",
+        reflectionResponse: snapshotGoal?.reflectionResponse ?? goal.reflectionResponse ?? "",
+        createdAt: snapshotGoal?.createdAt ?? goal.createdAt ?? null,
         goalApproved: Boolean(snapshotGoal?.goalApproved ?? goal.goalApproved),
         goalApprovedBy: snapshotGoal?.goalApprovedBy ?? goal.goalApprovedBy ?? null,
         goalApprovedAt: snapshotGoal?.goalApprovedAt ?? goal.goalApprovedAt ?? null,
@@ -91,6 +94,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         points: normalizePointValue(snapshotTemplate?.points ?? template.points),
         difficulty: normalizeDifficulty(snapshotTemplate?.difficulty ?? template.difficulty, snapshotTemplate?.points ?? template.points),
         category: normalizeGoalCategory(snapshotTemplate?.category ?? template.category),
+        reflectionPrompt: snapshotTemplate?.reflectionPrompt ?? template.reflectionPrompt ?? "",
         templateApproved: snapshotTemplate?.templateApproved ?? template.templateApproved ?? true,
         templateApprovedBy: snapshotTemplate?.templateApprovedBy ?? template.templateApprovedBy ?? null,
         templateApprovedAt: snapshotTemplate?.templateApprovedAt ?? template.templateApprovedAt ?? null
@@ -113,6 +117,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         difficulty: normalizeDifficulty(goal.difficulty, goal.points),
         category: normalizeGoalCategory(goal.category),
         priorityOrder: Number(goal.priorityOrder || 0),
+        reflectionPrompt: goal.reflectionPrompt || "",
+        reflectionResponse: goal.reflectionResponse || "",
+        createdAt: goal.createdAt || null,
         goalApproved: Boolean(goal.goalApproved),
         goalApprovedBy: goal.goalApprovedBy || null,
         goalApprovedAt: goal.goalApprovedAt || null,
@@ -141,6 +148,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         difficulty: normalizeDifficulty(template.difficulty, template.points),
         category: normalizeGoalCategory(template.category),
         durationDays: Math.max(1, Math.floor(Number(template.durationDays || 30))),
+        reflectionPrompt: template.reflectionPrompt || "",
         templateApproved: template.templateApproved !== false,
         templateApprovedBy: template.templateApprovedBy || null,
         templateApprovedAt: template.templateApprovedAt || null
@@ -152,6 +160,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         difficulty: normalizeDifficulty(template.difficulty, template.points),
         category: normalizeGoalCategory(template.category),
         durationDays: Math.max(1, Math.floor(Number(template.durationDays || 30))),
+        reflectionPrompt: template.reflectionPrompt || "",
         templateApproved: template.templateApproved !== false,
         templateApprovedBy: template.templateApprovedBy || null,
         templateApprovedAt: template.templateApprovedAt || null
@@ -695,7 +704,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           client.from("parent_youth_links").select("parent_id, youth_id, relationship"),
           client.from("goal_templates").select("*"),
           client.from("template_checklist_items").select("id, template_id, title, repeat_count, sort_order"),
-          client.from("required_level_goals").select("id, ward_id, level, title, summary, points, difficulty, category, deadline_days, created_by"),
+          client.from("required_level_goals").select("id, ward_id, level, title, summary, reflection_prompt, points, difficulty, category, deadline_days, created_by"),
           client.from("required_level_goal_checklist_items").select("id, required_goal_id, title, repeat_count, sort_order"),
           client.from("level_goal_requirements").select("ward_id, level, category, easy_required, medium_required, hard_required"),
           client.from("notification_preferences").select("*"),
@@ -810,6 +819,9 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             sourceGoalId: goal.source_goal_id || null,
             requiredGoalDefinitionId: goal.required_goal_definition_id || null,
             requiredGoalLevel: goal.required_goal_level || null,
+            reflectionPrompt: goal.reflection_prompt || "",
+            reflectionResponse: goal.reflection_response || "",
+            createdAt: goal.created_at ? String(goal.created_at).slice(0, 10) : null,
             goalApproved: Boolean(goal.goal_approved),
             goalApprovedBy: goal.goal_approved_by ? (profileNamesById.get(goal.goal_approved_by) || null) : null,
             goalApprovedAt: goal.goal_approved_at ? String(goal.goal_approved_at).slice(0, 10) : null,
@@ -827,6 +839,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             difficulty: normalizeDifficulty(template.difficulty, template.points),
             category: normalizeGoalCategory(template.category),
             durationDays: Math.max(1, Math.floor(Number(template.duration_days || 30))),
+            reflectionPrompt: template.reflection_prompt || "",
             templateApproved: template.template_approved !== false,
             templateApprovedBy: template.template_approved_by ? (profileNamesById.get(template.template_approved_by) || null) : null,
             templateApprovedAt: template.template_approved_at ? String(template.template_approved_at).slice(0, 10) : null,
@@ -860,6 +873,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             difficulty: normalizeDifficulty(goal.difficulty, goal.points),
             category: normalizeGoalCategory(goal.category),
             deadlineDays: Number(goal.deadline_days || 30),
+            reflectionPrompt: goal.reflection_prompt || "",
             subGoals: buildRequiredGoalSubGoals(requiredGoalChecklistItems, goal.id)
           })),
           notifications: notifications.map((notification) => ({
@@ -908,6 +922,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           required_goal_level: payload.goal.requiredGoalLevel || null,
           title: payload.goal.title,
           summary: payload.goal.summary,
+          reflection_prompt: payload.goal.reflectionPrompt || "",
+          reflection_response: payload.goal.reflectionResponse || "",
           points: normalizePointValue(payload.goal.points),
           difficulty: normalizeDifficulty(payload.goal.difficulty, payload.goal.points),
           category: normalizeGoalCategory(payload.goal.category),
@@ -942,6 +958,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         const goalResult = await client.from("goals").update({
           title: payload.goal.title,
           summary: payload.goal.summary,
+          reflection_prompt: payload.goal.reflectionPrompt || "",
+          reflection_response: payload.goal.reflectionResponse || "",
           points: normalizePointValue(payload.goal.points),
           difficulty: normalizeDifficulty(payload.goal.difficulty, payload.goal.points),
           category: normalizeGoalCategory(payload.goal.category),
@@ -980,6 +998,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
           category: normalizeGoalCategory(payload.template.category),
           duration_days: Math.max(1, Math.floor(Number(payload.template.durationDays || 30))),
+          reflection_prompt: payload.template.reflectionPrompt || "",
           template_approved: payload.template.templateApproved !== false,
           template_approved_by: payload.template.templateApproved !== false ? (payload.template.templateApprovedById || payload.createdBy || null) : null,
           template_approved_at: payload.template.templateApproved !== false ? new Date().toISOString() : null,
@@ -1008,7 +1027,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           points: normalizePointValue(payload.template.points),
           difficulty: normalizeDifficulty(payload.template.difficulty, payload.template.points),
           category: normalizeGoalCategory(payload.template.category),
-          duration_days: Math.max(1, Math.floor(Number(payload.template.durationDays || 30)))
+          duration_days: Math.max(1, Math.floor(Number(payload.template.durationDays || 30))),
+          reflection_prompt: payload.template.reflectionPrompt || ""
         };
         if (payload.template.templateApprovalUpdated) {
           templateUpdate.template_approved = payload.template.templateApproved !== false;
@@ -1103,6 +1123,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           difficulty: normalizeDifficulty(payload.requiredGoal.difficulty, payload.requiredGoal.points),
           category: normalizeGoalCategory(payload.requiredGoal.category),
           deadline_days: payload.requiredGoal.deadlineDays,
+          reflection_prompt: payload.requiredGoal.reflectionPrompt || "",
           created_by: payload.createdBy
         });
         if (result.error) {
@@ -1127,7 +1148,8 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           points: normalizePointValue(payload.requiredGoal.points),
           difficulty: normalizeDifficulty(payload.requiredGoal.difficulty, payload.requiredGoal.points),
           category: normalizeGoalCategory(payload.requiredGoal.category),
-          deadline_days: payload.requiredGoal.deadlineDays
+          deadline_days: payload.requiredGoal.deadlineDays,
+          reflection_prompt: payload.requiredGoal.reflectionPrompt || ""
         }).eq("id", payload.requiredGoal.id);
         if (result.error) {
           throw result.error;
