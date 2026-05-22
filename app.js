@@ -3015,6 +3015,20 @@ function getSelectedRegisterWard() {
 
 async function login(event) {
   event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const originalButtonText = submitButton?.textContent || "Sign in";
+
+  if (submitButton?.disabled) {
+    return;
+  }
+
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.dataset.pending = "true";
+    submitButton.textContent = "Signing in...";
+  }
+
   try {
     const identifier = elements.username.value.trim().toLowerCase();
     const password = elements.password.value;
@@ -3063,6 +3077,12 @@ async function login(event) {
   } catch (error) {
     console.warn("Login failed unexpectedly.", error);
     window.alert(error?.message || "Login failed unexpectedly. Please try again.");
+  } finally {
+    if (submitButton && document.body.contains(submitButton)) {
+      submitButton.disabled = false;
+      delete submitButton.dataset.pending;
+      submitButton.textContent = originalButtonText;
+    }
   }
 }
 

@@ -228,6 +228,16 @@ button:hover {
   transform: translateY(-1px);
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+
+button[data-pending="true"] {
+  position: relative;
+}
+
 .primary-button {
   background: linear-gradient(135deg, var(--accent), #0758d4);
   color: #fff;
@@ -1592,6 +1602,14 @@ button {
 button:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 18px rgba(0, 115, 234, 0.18);
+}
+
+button:disabled,
+button:disabled:hover {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+  box-shadow: none;
 }
 
 .primary-button,
