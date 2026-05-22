@@ -1598,6 +1598,46 @@ function getMissingRequiredGoalsForYouthLevel(youth, level) {
     .filter((requiredGoal) => !assignedDefinitionIds.has(requiredGoal.id));
 }
 
+function getFocusedChecklistWindow(subGoals, visibleUncheckedCount = 10) {
+  const items = subGoals || [];
+  if (items.length <= 40) {
+    return items.map((subGoal, index) => ({ subGoal, index, isLatestCompleted: false }));
+  }
+
+  const latestCompletedIndex = items.reduce((latestIndex, subGoal, index) =>
+    subGoal.completedUnits?.some(Boolean) ? index : latestIndex
+  , -1);
+  const nextStartIndex = latestCompletedIndex >= 0 ? latestCompletedIndex + 1 : 0;
+  const visibleItems = [];
+
+  if (latestCompletedIndex >= 0) {
+    visibleItems.push({
+      subGoal: items[latestCompletedIndex],
+      index: latestCompletedIndex,
+      isLatestCompleted: true
+    });
+  }
+
+  items.slice(nextStartIndex, nextStartIndex + visibleUncheckedCount).forEach((subGoal, offset) => {
+    visibleItems.push({
+      subGoal,
+      index: nextStartIndex + offset,
+      isLatestCompleted: false
+    });
+  });
+
+  if (!visibleItems.length && items.length) {
+    const finalItems = items.slice(Math.max(0, items.length - visibleUncheckedCount));
+    return finalItems.map((subGoal, offset) => ({
+      subGoal,
+      index: items.length - finalItems.length + offset,
+      isLatestCompleted: offset === finalItems.length - 1
+    }));
+  }
+
+  return visibleItems;
+}
+
 function getRequiredGoalCompletionForYouthLevel(youth, level) {
   const requiredGoals = getRequiredGoalsForWardLevel(youth.ward, level);
   if (!requiredGoals.length) {
@@ -4146,18 +4186,30 @@ function buildGoalCard(goal, mode) {
 
   const useCompactChapterGrid = goal.subGoals.length > 40 && goal.subGoals.every((subGoal) => subGoal.repeatCount === 1);
   if (useCompactChapterGrid) {
+    const visibleChapterItems = getFocusedChecklistWindow(goal.subGoals);
+    const completedChapters = goal.subGoals.filter((subGoal) => subGoal.completedUnits?.some(Boolean)).length;
+    const latestVisibleItem = visibleChapterItems.find((item) => item.isLatestCompleted);
+    const chapterSummary = document.createElement("p");
+    chapterSummary.className = "chapter-checklist-summary subgoal-meta";
+    chapterSummary.textContent = latestVisibleItem
+      ? `Showing ${latestVisibleItem.subGoal.title} as the last checked chapter, then the next ${visibleChapterItems.length - 1} chapter${visibleChapterItems.length - 1 === 1 ? "" : "s"}. ${completedChapters}/${goal.subGoals.length} complete.`
+      : `Showing the first ${visibleChapterItems.length} chapter${visibleChapterItems.length === 1 ? "" : "s"}. ${completedChapters}/${goal.subGoals.length} complete.`;
+    subGoalList.appendChild(chapterSummary);
+
     const chapterGrid = document.createElement("div");
     chapterGrid.className = "chapter-checklist-grid";
-    goal.subGoals.forEach((subGoal) => {
+    visibleChapterItems.forEach(({ subGoal, index, isLatestCompleted }) => {
       const completedDate = subGoal.completedUnits?.[0] || null;
       const label = document.createElement("label");
       label.className = `chapter-check-item${completedDate ? " completed" : ""}`;
+      label.classList.toggle("latest-completed", isLatestCompleted);
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = Boolean(completedDate);
       checkbox.disabled = mode !== "youth" || goalClosed || !goal.goalApproved;
       checkbox.title = completedDate ? `Completed on ${formatCompletedDate(completedDate)}` : "Not completed yet";
       checkbox.dataset.completedDate = completedDate || "";
+      checkbox.dataset.chapterIndex = String(index);
       if (mode === "youth") {
         checkbox.addEventListener("change", (event) => {
           toggleSubGoalUnit(goal.id, subGoal.id, 0, event.target.checked);

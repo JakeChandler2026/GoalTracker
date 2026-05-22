@@ -1348,6 +1348,10 @@ button[data-pending="true"] {
   gap: 8px;
 }
 
+.chapter-checklist-summary {
+  margin: 0;
+}
+
 .chapter-check-item {
   display: flex;
   align-items: center;
@@ -1376,6 +1380,11 @@ button[data-pending="true"] {
   background: #e5f9f1;
   border-color: rgba(0, 200, 117, 0.35);
   color: #007f52;
+}
+
+.chapter-check-item.latest-completed {
+  border-color: #0073ea;
+  box-shadow: inset 3px 0 0 #0073ea;
 }
 
 .checklist-label.completed {

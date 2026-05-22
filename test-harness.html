@@ -1255,6 +1255,60 @@
           assignedRequiredGoalCard.textContent.includes("Required Level 1: Learn"),
           "Assigned required goals are visually identifiable in the goal review UI"
         );
+
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("userTab"));
+        reloadedDoc.getElementById("username").value = "josh@example.com";
+        reloadedDoc.getElementById("password").value = "goal123";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        let youthBookOfMormonGoalCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.textContent.includes("Read the Book of Mormon") && card.classList.contains("is-required-goal")
+        );
+        let visibleChapterLabels = Array.from(youthBookOfMormonGoalCard.querySelectorAll(".chapter-check-item span"))
+          .map((node) => node.textContent);
+        assert(
+          youthBookOfMormonGoalCard.querySelectorAll(".chapter-check-item").length === 10 &&
+          youthBookOfMormonGoalCard.textContent.includes("Showing the first 10 chapters") &&
+          !visibleChapterLabels.includes("1 Nephi 11"),
+          "Long chapter checklists initially show only the first 10 checkable chapters"
+        );
+        let visibleChapterCheckboxes = youthBookOfMormonGoalCard.querySelectorAll(".chapter-check-item input[type='checkbox']");
+        visibleChapterCheckboxes[0].checked = true;
+        change(visibleChapterCheckboxes[0]);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        youthBookOfMormonGoalCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.textContent.includes("Read the Book of Mormon") && card.classList.contains("is-required-goal")
+        );
+        visibleChapterCheckboxes = youthBookOfMormonGoalCard.querySelectorAll(".chapter-check-item input[type='checkbox']");
+        visibleChapterCheckboxes[1].checked = true;
+        change(visibleChapterCheckboxes[1]);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        youthBookOfMormonGoalCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.textContent.includes("Read the Book of Mormon") && card.classList.contains("is-required-goal")
+        );
+        visibleChapterLabels = Array.from(youthBookOfMormonGoalCard.querySelectorAll(".chapter-check-item span"))
+          .map((node) => node.textContent);
+        assert(
+          youthBookOfMormonGoalCard.querySelectorAll(".chapter-check-item").length === 11 &&
+          youthBookOfMormonGoalCard.querySelector(".chapter-check-item.latest-completed")?.textContent.includes("1 Nephi 2") &&
+          visibleChapterLabels.includes("1 Nephi 12") &&
+          !visibleChapterLabels.includes("1 Nephi 1"),
+          "Long chapter checklists move forward to the last checked chapter plus the next 10 chapters"
+        );
+
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("bishopTab"));
+        reloadedDoc.getElementById("username").value = "ward.bishop@example.com";
+        reloadedDoc.getElementById("password").value = "steward123";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
         await openAdminView(reloadedDoc, "Required Goals & Levels");
         const requiredGoalForm = reloadedDoc.getElementById("createRequiredLevelGoalForm");
         requiredGoalForm.elements.requiredGoalLevel.value = "1";
