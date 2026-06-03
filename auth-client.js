@@ -110,6 +110,25 @@
     return role === "youth_leader" ? "pending" : "verified";
   }
 
+  function getSignInRoleLabel(role) {
+    if (role === "youth") {
+      return "Youth";
+    }
+    if (role === "youth_leader") {
+      return "Youth leader";
+    }
+    if (role === "bishop") {
+      return "Bishop";
+    }
+    if (role === "parent") {
+      return "Parent";
+    }
+    if (role === "administrator") {
+      return "Admin";
+    }
+    return "selected";
+  }
+
   async function ensureProfileForAuthUser(client, authUser) {
     const email = String(authUser?.email || "").trim().toLowerCase();
     if (!authUser?.id || !email) {
@@ -175,6 +194,13 @@
     );
   }
 
+  function findUserByEmailAndPassword(appState, email, password) {
+    return appState.users.find((user) =>
+      String(user.email || "").toLowerCase() === email &&
+      user.password === password
+    );
+  }
+
   function getApprovalError(user) {
     if (user.approvalStatus === "rejected") {
       return "This account has been disabled by a ward administrator.";
@@ -205,6 +231,11 @@
     async signIn({ appState, role, email, password }) {
       const matchedUser = findUserByCredentials(appState, role, email, password);
       if (!matchedUser) {
+        const wrongRoleUser = findUserByEmailAndPassword(appState, email, password);
+        if (wrongRoleUser) {
+          return { ok: false, error: `No ${getSignInRoleLabel(role)} login was found. Try a different sign-in tab.` };
+        }
+
         return { ok: false, error: "Login not recognized. Please use one of the demo accounts or create a new account." };
       }
 
@@ -320,9 +351,14 @@
 
       const matchedUser = await ensureProfileForAuthUser(client, data.user);
 
-      if (!matchedUser || matchedUser.role !== role) {
+      if (!matchedUser) {
         await client.auth.signOut();
         return { ok: false, error: "The auth account exists, but no matching app profile was found yet." };
+      }
+
+      if (matchedUser.role !== role) {
+        await client.auth.signOut();
+        return { ok: false, error: `No ${getSignInRoleLabel(role)} login was found. Try a different sign-in tab.` };
       }
 
       const approvalError = getApprovalError(matchedUser);

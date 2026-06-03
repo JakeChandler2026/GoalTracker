@@ -165,6 +165,18 @@
           "Admin login tab stays visible inside the access panel"
         );
 
+        click(reloadedDoc.getElementById("userTab"));
+        lastAlertMessage = "";
+        reloadedDoc.getElementById("username").value = "ward.bishop@example.com";
+        reloadedDoc.getElementById("password").value = "steward123";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert(
+          lastAlertMessage.includes("No Youth login was found") &&
+          lastAlertMessage.includes("Try a different sign-in tab"),
+          "Wrong role tab gives a clear role-specific sign-in message"
+        );
+
         click(reloadedDoc.getElementById("adminTab"));
         assert(reloadedDoc.getElementById("userAuthModes").classList.contains("hidden"), "Admin login does not expose self-signup controls");
         reloadedDoc.getElementById("username").value = "admin@example.com";
