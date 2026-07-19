@@ -634,6 +634,14 @@ button[data-pending="true"] {
   font-size: 1rem;
 }
 
+.managed-youth-name {
+  color: var(--text);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.16rem;
+  font-weight: 800;
+  line-height: 1.12;
+}
+
 .compact-card-button {
   width: 100%;
   min-height: 38px;

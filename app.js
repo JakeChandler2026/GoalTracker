@@ -5465,7 +5465,7 @@ function buildManagedYouthOverview(sessionUser, managedYouth) {
     card.innerHTML = `
       <div class="managed-youth-card-header">
         <div>
-          <h4>${escapeHtml(youth.name)}</h4>
+          <h4 class="managed-youth-name">${escapeHtml(youth.name)}</h4>
           <p class="subgoal-meta">${getOrganizationLabel(youth.organization)} · ${loginLabel}</p>
           <p class="subgoal-meta">Parents: ${escapeHtml(parentSummary)}</p>
         </div>
