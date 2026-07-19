@@ -808,6 +808,7 @@ function normalizeState(rawState) {
       goalApprovedAt: goal.goalApprovedAt || (planApproved ? goal.completedAt || null : null),
       leaderApproved: completionApproved,
       leaderApprovedBy: goal.leaderApprovedBy || null,
+      leaderComment: String(goal.leaderComment || "").trim(),
       completedAt: goal.completedAt || null,
       deadline: normalizeGoalDeadline(goal),
       subGoals: goal.subGoals.map((subGoal) => ({
@@ -990,6 +991,11 @@ function escapeHtml(value) {
 }
 
 function getTodayDateString() {
+  const configuredDate = normalizeDateString(window.BishopGoalTrackerConfig?.testDate || "");
+  if (configuredDate) {
+    return configuredDate;
+  }
+
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -1539,6 +1545,7 @@ function buildGoalFromTemplate(template, userId, deadline = addDays(getTodayDate
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
+    leaderComment: "",
     completedAt: null,
     subGoals: template.subGoals.map((subGoal) => ({
       id: createId("subgoal"),
@@ -1579,6 +1586,7 @@ function buildGoalFromRequiredLevelGoal(requiredGoal, youth) {
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
+    leaderComment: "",
     completedAt: null,
     subGoals: requiredGoal.subGoals.map((subGoal) => ({
       id: createId("subgoal"),
@@ -1717,6 +1725,7 @@ function cloneGoalForUser(sourceGoal, userId, deadline = (sourceGoal.deadline &&
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
+    leaderComment: "",
     completedAt: null,
     subGoals: sourceGoal.subGoals.map((subGoal) => ({
       id: createId("subgoal"),
@@ -2670,6 +2679,7 @@ function resetGoalPlanApproval(goal) {
 function resetCompletionApproval(goal) {
   goal.leaderApproved = false;
   goal.leaderApprovedBy = null;
+  goal.leaderComment = "";
   goal.completedAt = null;
 }
 
@@ -3335,7 +3345,7 @@ async function approveGoalPlan(goalId, difficulty, category) {
   await persistGoal(goal);
 }
 
-async function approveGoal(goalId) {
+async function approveGoal(goalId, leaderComment = "") {
   const sessionUser = getSessionUser();
   const goal = state.goals.find((item) => item.id === goalId);
 
@@ -3360,6 +3370,7 @@ async function approveGoal(goalId) {
 
   goal.leaderApproved = true;
   goal.leaderApprovedBy = sessionUser.name;
+  goal.leaderComment = String(leaderComment || "").trim();
   goal.completedAt = getTodayDateString();
   const youth = state.users.find((user) => user.id === goal.userId && user.role === "youth");
   await persistGoal(goal);
@@ -3417,6 +3428,7 @@ async function addGoal(event) {
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
+    leaderComment: "",
     completedAt: null,
     subGoals: draftChecklistItems.map((item) => {
       return {
@@ -3494,6 +3506,7 @@ async function createManagedGoal(event) {
     deadline,
     leaderApproved: false,
     leaderApprovedBy: null,
+    leaderComment: "",
     completedAt: null,
     subGoals: draftChecklistItems.map((item) => ({
       id: createId("subgoal"),
@@ -4305,6 +4318,17 @@ function buildGoalCard(goal, mode) {
     actions.appendChild(note);
   }
 
+  if (mode === "youth" && goal.leaderApproved) {
+    const approvalNote = document.createElement("div");
+    approvalNote.className = "leader-summary leader-comment";
+    approvalNote.innerHTML = `
+      <strong>Leader approval:</strong>
+      <span>Approved by ${escapeHtml(goal.leaderApprovedBy || "a leader")}${goal.completedAt ? ` on ${escapeHtml(goal.completedAt)}` : ""}.</span>
+      ${goal.leaderComment ? `<span>${escapeHtml(goal.leaderComment)}</span>` : ""}
+    `;
+    actions.appendChild(approvalNote);
+  }
+
   if (mode === "youth" && !goalClosed && goal.goalApproved) {
     const subGoalForm = document.createElement("form");
     subGoalForm.className = "inline-form form-card";
@@ -4373,13 +4397,20 @@ function buildGoalCard(goal, mode) {
       });
       actions.appendChild(extensionForm);
     } else if (!goal.leaderApproved) {
-      const approveButton = document.createElement("button");
-      approveButton.type = "button";
-      approveButton.className = "secondary-button";
-      approveButton.textContent = "Approve Completed Goal";
-      approveButton.disabled = progress !== 100;
-      approveButton.addEventListener("click", () => approveGoal(goal.id));
-      actions.appendChild(approveButton);
+      const completionApprovalForm = document.createElement("form");
+      completionApprovalForm.className = "inline-form form-card completion-approval-form";
+      completionApprovalForm.innerHTML = `
+        <label>
+          <span>Leader comment optional</span>
+          <textarea name="leaderComment" placeholder="Add a short note the youth can see after approval."></textarea>
+        </label>
+        <button class="secondary-button" type="submit"${progress !== 100 ? " disabled" : ""}>Approve Completed Goal</button>
+      `;
+      completionApprovalForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        approveGoal(goal.id, completionApprovalForm.elements.leaderComment.value);
+      });
+      actions.appendChild(completionApprovalForm);
     }
   }
 

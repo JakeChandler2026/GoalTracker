@@ -312,6 +312,15 @@ button[data-pending="true"] {
   margin-bottom: 18px;
 }
 
+.leader-comment {
+  display: grid;
+  gap: 6px;
+}
+
+.leader-comment strong {
+  color: var(--text);
+}
+
 .competition-board,
 .leaderboard-list,
 .shared-goal-list,

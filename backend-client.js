@@ -83,6 +83,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         goalApprovedAt: snapshotGoal?.goalApprovedAt ?? goal.goalApprovedAt ?? null,
         leaderApproved: Boolean(snapshotGoal?.leaderApproved ?? goal.leaderApproved),
         leaderApprovedBy: snapshotGoal?.leaderApprovedBy ?? goal.leaderApprovedBy ?? null,
+        leaderComment: snapshotGoal?.leaderComment ?? goal.leaderComment ?? "",
         completedAt: snapshotGoal?.completedAt ?? goal.completedAt ?? null
       };
     });
@@ -125,6 +126,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
         goalApprovedAt: goal.goalApprovedAt || null,
         leaderApproved: Boolean(goal.leaderApproved),
         leaderApprovedBy: goal.leaderApprovedBy || null,
+        leaderComment: goal.leaderComment || "",
         completedAt: goal.completedAt || null
       };
     } else if (options.insert) {
@@ -828,6 +830,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
             deadline: goal.deadline,
             leaderApproved: Boolean(goal.leader_approved),
             leaderApprovedBy: goal.leader_approved_by ? (profileNamesById.get(goal.leader_approved_by) || null) : null,
+            leaderComment: goal.leader_comment || "",
             completedAt: goal.completed_at ? String(goal.completed_at).slice(0, 10) : null,
             subGoals: buildGoalSubGoals(goalChecklistItems, goalChecklistUnits, goal.id)
           })),
@@ -935,6 +938,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           goal_approved_at: payload.goal.goalApprovedAt ? `${payload.goal.goalApprovedAt}T00:00:00.000Z` : null,
           deadline: payload.goal.deadline,
           leader_approved: Boolean(payload.goal.leaderApproved),
+          leader_comment: payload.goal.leaderComment || "",
           completed_at: payload.goal.completedAt ? `${payload.goal.completedAt}T00:00:00.000Z` : null
         });
         if (goalResult.error) {
@@ -970,6 +974,7 @@ function mergeSnapshotProgressData(relationalState, snapshotState) {
           deadline: payload.goal.deadline,
           leader_approved: Boolean(payload.goal.leaderApproved),
           leader_approved_by: approverId,
+          leader_comment: payload.goal.leaderComment || "",
           completed_at: payload.goal.completedAt ? `${payload.goal.completedAt}T00:00:00.000Z` : null
         }).eq("id", payload.goal.id);
         if (goalResult.error) {

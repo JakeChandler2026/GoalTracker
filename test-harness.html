@@ -31,6 +31,7 @@
     let lastAlertMessage = "";
     let lastConfirmMessage = "";
     let nextConfirmResponse = true;
+    const harnessToday = "2026-05-22";
 
     function assert(condition, message) {
       const line = document.createElement("div");
@@ -633,22 +634,54 @@
           leaderGoalCard.querySelector(".subgoal-meta").textContent.includes("Last checked on"),
           "Leaders can see the completion date for checked checklist items"
         );
-        const approveButton = Array.from(leaderGoalCard.querySelectorAll("button")).find((button) =>
-          button.textContent.includes("Approve Completed Goal")
-        );
+        const completionApprovalForm = leaderGoalCard.querySelector(".completion-approval-form");
+        const approveButton = completionApprovalForm?.querySelector("button");
         assert(
-          Boolean(approveButton) && !approveButton.disabled,
+          Boolean(completionApprovalForm) && Boolean(approveButton) && !approveButton.disabled,
           `Leader can approve completed goal after approving the goal plan (progress=${leaderGoalCard.querySelector(".progress-value")?.textContent || "missing"}, status=${leaderGoalCard.querySelector(".goal-status")?.textContent || "missing"}, buttons=${leaderGoalCard.querySelectorAll("button").length})`
         );
-        click(approveButton);
+        completionApprovalForm.elements.leaderComment.value = "Great steady work. Keep using scripture study as a daily anchor.";
+        submit(completionApprovalForm);
         await new Promise((resolve) => setTimeout(resolve, 250));
 
-        const approvedCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+        let approvedCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
           card.querySelector(".goal-title").textContent === "Scripture Study Goal"
         );
         assert(
           approvedCard.querySelector(".goal-status").textContent.includes("Completed and approved"),
           `Leader approval updates goal status (status=${approvedCard.querySelector(".goal-status")?.textContent || "missing"})`
+        );
+
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("userTab"));
+        reloadedDoc.getElementById("username").value = "josh@example.com";
+        reloadedDoc.getElementById("password").value = "goal123";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        const youthApprovedCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.querySelector(".goal-title").textContent === "Scripture Study Goal"
+        );
+        assert(
+          youthApprovedCard.textContent.includes("Leader approval:") &&
+          youthApprovedCard.textContent.includes("Great steady work"),
+          "Youth can see leader approval and comments on a completed goal"
+        );
+
+        click(reloadedDoc.getElementById("logoutButton"));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        click(reloadedDoc.getElementById("leaderTab"));
+        reloadedDoc.getElementById("username").value = "leader.one@example.com";
+        reloadedDoc.getElementById("password").value = "approve789";
+        submit(reloadedDoc.getElementById("loginForm"));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await openAdminView(reloadedDoc, "Review Goals");
+
+        approvedCard = Array.from(reloadedDoc.querySelectorAll(".goal-card")).find((card) =>
+          card.querySelector(".goal-title").textContent === "Scripture Study Goal"
         );
         const undoLatestCheckButton = Array.from(approvedCard.querySelectorAll("button")).find((button) =>
           button.textContent.includes("Undo Latest Check")
@@ -665,7 +698,7 @@
           reopenedCard.querySelector(".goal-status").textContent.includes("In progress"),
           "Leader undo clears the approved state"
         );
-        const today = new Date().toISOString().slice(0, 10);
+        const today = harnessToday;
         const yesterday = addDays(today, -1);
         const extensionDate = addDays(today, 10);
         let editorOverlay = await openGoalEditor(reloadedDoc, reopenedCard);
@@ -1056,7 +1089,7 @@
           card.querySelector(".goal-title").textContent === "Daily Scripture Habit"
         );
         assert(
-          assignedTemplateGoalCard.querySelector(".goal-deadline").textContent.includes(formatHarnessDate(addDays(new Date().toISOString().slice(0, 10), 90))),
+          assignedTemplateGoalCard.querySelector(".goal-deadline").textContent.includes(formatHarnessDate(addDays(harnessToday, 90))),
           "Assigned template goal deadline uses the template default timeline from assignment date"
         );
         assert(assignedTemplateGoalCard.querySelector(".goal-pacing").textContent.includes("On pace"), "Goal cards show pacing status");
