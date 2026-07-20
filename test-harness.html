@@ -90,6 +90,10 @@
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
 
+    function getAdminNavLabels(doc) {
+      return Array.from(doc.querySelectorAll("[data-admin-view] strong")).map((node) => node.textContent.trim());
+    }
+
     function addDays(dateString, days) {
       const date = new Date(`${dateString}T00:00:00`);
       date.setDate(date.getDate() + days);
@@ -187,6 +191,15 @@
 
         assert(reloadedDoc.getElementById("sessionTitle").textContent.includes("Stake Administrator"), "Administrator login succeeds");
         assert(reloadedDoc.getElementById("dashboardTitle").textContent.includes("administrator overview"), "Administrator lands on overview mode");
+        const administratorNavLabels = getAdminNavLabels(reloadedDoc);
+        assert(
+          administratorNavLabels.includes("Overview") &&
+          administratorNavLabels.includes("Ward Management") &&
+          !administratorNavLabels.includes("Create Youth Account") &&
+          !administratorNavLabels.includes("Review Goals") &&
+          !administratorNavLabels.includes("Required Goals & Levels"),
+          "Administrator role smoke test exposes stake controls without ward workflow tools"
+        );
         const adminWardCards = Array.from(reloadedDoc.querySelectorAll(".admin-ward-card"));
         assert(adminWardCards.length >= 2, "Administrator overview shows multiple wards");
         assert(
@@ -613,6 +626,13 @@
         await new Promise((resolve) => setTimeout(resolve, 250));
 
         assert(reloadedDoc.getElementById("sessionTitle").textContent.includes("Brother Jensen"), "Leader login succeeds");
+        const youthLeaderNavLabels = getAdminNavLabels(reloadedDoc);
+        assert(
+          ["Overview", "Create Goal For Youth", "Create Youth Account", "Import Ward List", "Create Goal Template", "Template Editor", "Review Goals"].every((label) => youthLeaderNavLabels.includes(label)) &&
+          !youthLeaderNavLabels.includes("Required Goals & Levels") &&
+          !youthLeaderNavLabels.includes("Ward Approval"),
+          "Youth leader role smoke test exposes youth-serving tools without bishop-only controls"
+        );
         await openAdminView(reloadedDoc, "Overview");
         assert(
           reloadedDoc.querySelector(".weekly-summary-email-card")?.textContent.includes("This week") &&
@@ -1232,6 +1252,11 @@
         await new Promise((resolve) => setTimeout(resolve, 250));
 
         await openAdminView(reloadedDoc, "Overview");
+        const bishopNavLabels = getAdminNavLabels(reloadedDoc);
+        assert(
+          ["Overview", "Create Goal For Youth", "Create Youth Account", "Import Ward List", "Create Goal Template", "Template Editor", "Review Goals", "Required Goals & Levels", "Ward Approval"].every((label) => bishopNavLabels.includes(label)),
+          "Bishop role smoke test exposes ward leadership and bishop-only controls"
+        );
         assert(
           reloadedDoc.querySelector(".weekly-summary-email-card")?.textContent.includes("Maria Lopez") &&
           reloadedDoc.querySelector(".weekly-summary-email-card")?.textContent.includes("Josh Carter"),
